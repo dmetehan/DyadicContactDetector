@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.io import read_image
 
-from dataset import FlickrCI3DClassification
+from FlickrCI3DClassification import FlickrCI3DClassification
 
 
 class ContactClassifier(nn.Module):

@@ -1,5 +1,6 @@
 # This code crops the images around the bounding boxes of each interacting people couple.
 import os
+import sys
 import cv2
 import json
 import pandas as pd
@@ -60,7 +61,8 @@ def prep(set_dir):
 
 
 if __name__ == '__main__':
-    # ROOT_DIR should include train and test folders for FlickrCI3d Classification dataset.
-    ROOT_DIR = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification'
-    prep(os.path.join(ROOT_DIR, 'test'))
-    prep(os.path.join(ROOT_DIR, 'train'))
+    # root_dir should include train and test folders for FlickrCI3D Classification dataset.
+    # root_dir = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification'
+    root_dir = sys.argv[1]
+    prep(os.path.join(root_dir, 'test'))
+    prep(os.path.join(root_dir, 'train'))

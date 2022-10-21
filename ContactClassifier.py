@@ -1,11 +1,6 @@
-import os
-import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.io import read_image
-
-from FlickrCI3DClassification import FlickrCI3DClassification
 
 
 class ContactClassifier(nn.Module):

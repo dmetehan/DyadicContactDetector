@@ -34,7 +34,7 @@ class FlickrCI3DClassification(Dataset):
         os.makedirs(self.gauss_hmaps_dir, exist_ok=True)
         img_labels = pd.read_csv(labels_file)
         non_ambig_inds = img_labels.index[img_labels['contact_type'] != 1].tolist()
-        self.img_labels = img_labels[img_labels['contact_type'] != 1].reset_index()  # remove ambiguous class
+        self.img_labels = img_labels[img_labels['contact_type'] != 1].reset_index(drop=True)  # remove ambiguous class
         self.pose_dets = json.load(open(dets_file))
         self.pose_dets: List[Dict]
         self.pose_dets = [self.pose_dets[i] for i in non_ambig_inds]
@@ -133,10 +133,18 @@ class FlickrCI3DClassification(Dataset):
         return x1, y1, x2, y2
 
     def get_heatmaps(self, idx, rgb=False):
+        subset = ["anger_252_00.png", "anger_640_00.png", "anger_674_00.png", "anger_964_00.png", "anger_964_01.png",
+                  "anger_975_00.png", "anger_988_00.png", "anger_1007_00.png", "anger_1007_01.png", "anger_1010_00.png",
+                  "anger_1077_02.png", "anger_1077_03.png", "anger_1077_04.png", "anger_1126_00.png",
+                  "anger_1131_00.png", "anger_1824_01.png", "anger_1848_01.png"]
         # TODO: add rgb option
-        crop = Image.open(self.img_labels.loc[idx, "crop_path"])
+        crop_path = self.img_labels.loc[idx, "crop_path"]
+        crop_path = '/'.join(('/'.join(crop_path.split('/')[:-1]), subset[idx]))
+        idx = self.img_labels.loc[self.img_labels['crop_path'].str.contains(subset[idx])].index.values[0]
+        print(crop_path)
+        crop = Image.open(crop_path)
         label = min(self.img_labels.loc[idx, "contact_type"], 1)
-        heatmap_path = f'{os.path.join(self.heatmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
+        heatmap_path = f'{os.path.join(self.heatmaps_dir, os.path.basename(crop_path))}.npy'
         if not os.path.exists(heatmap_path):
             # no detections
             return np.zeros((34 if not rgb else 37, 224, 224), dtype=np.float32), label
@@ -225,7 +233,7 @@ def init_datasets(train_dir, test_dir, batch_size, option=1, val_split=0.2, targ
     dataset_size = len(train_dataset)
     indices = list(range(dataset_size))
     np.random.seed(random_seed)
-    np.random.shuffle(indices)
+    # np.random.shuffle(indices)
     # Creating data samplers: SubsetRandomSampler
     # split = int(np.floor(val_split * dataset_size))
     # train_indices, val_indices = indices[split:], indices[:split]

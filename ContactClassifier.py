@@ -18,14 +18,23 @@ class ContactClassifier(nn.Module):
 		return output
 
 
-resnet50 = torch.hub.load("pytorch/vision", "resnet50", weights="IMAGENET1K_V2")
-modules = list(resnet50.children())[:-1]
-resnet50 = nn.Sequential(*modules)
-model = ContactClassifier(resnet50)
-print(model)
+def init_model(option=1):
+	resnet50 = torch.hub.load("pytorch/vision", "resnet50", weights="IMAGENET1K_V2")
+	print(list(resnet50.children())[0])
+	resnet50.conv1 = nn.Conv2d(34 if option == 1 else 37, 64, kernel_size=7, stride=2, padding=3, bias=False)
+	print(list(resnet50.children())[0])
+	modules = list(resnet50.children())[:-1]
+	resnet50 = nn.Sequential(*modules)
+	model = ContactClassifier(resnet50)
+	return model
 
 
-random_data = torch.rand((1, 3, 512, 256))
-result = model(random_data)
-print(result)
+def main():
+	model = init_model()
+	random_data = torch.rand((1, 3, 512, 256))
+	result = model(random_data)
+	print(result)
 
+
+if __name__ == '__main__':
+	main()

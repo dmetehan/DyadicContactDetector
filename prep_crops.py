@@ -10,7 +10,10 @@ import pandas as pd
 
 
 def crop(img, bbxes, person_ids):
-    height, width, _ = img.shape
+    try:
+        height, width, _ = img.shape
+    except AttributeError:
+        width, height = img.size
     p = [{'x1': 0, 'y1': 0, 'x2': 0, 'y2': 0}, {'x1': 0, 'y1': 0, 'x2': 0, 'y2': 0}]
     p[0]['x1'], p[0]['y1'], p[0]['x2'], p[0]['y2'] = bbxes[person_ids[0]]
     p[1]['x1'], p[1]['y1'], p[1]['x2'], p[1]['y2'] = bbxes[person_ids[1]]
@@ -32,7 +35,10 @@ def crop(img, bbxes, person_ids):
     # actual cropping
     x1, y1, x2, y2 = max(0, int(round(x1)) - dx_left), max(0, int(round(y1)) - dy_top), min(width, int(round(
         x2)) + dx_right), min(height, int(round(y2)) + dy_bottom)
-    return img[y1:y2, x1:x2]
+    try:
+        return img[y1:y2, x1:x2]
+    except TypeError:
+        return img.crop((x1, y1, x2, y2))
 
 
 def prep(set_dir):

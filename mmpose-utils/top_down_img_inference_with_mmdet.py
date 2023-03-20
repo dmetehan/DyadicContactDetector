@@ -32,7 +32,10 @@ def main():
     parser.add_argument('det_checkpoint', help='Checkpoint file for detection')
     parser.add_argument('pose_config', help='Config file for pose')
     parser.add_argument('pose_checkpoint', help='Checkpoint file for pose')
-    parser.add_argument('--set-root', type=str, default='', help='Train or test set root')
+    parser.add_argument('--set-dir', type=str, default='', help='Train or test set dir')
+    parser.add_argument('--out-dir', type=str, default='', help='Train or test output dir')
+    parser.add_argument('--img-dir', type=str, default='', help='Train or test image dir')
+    parser.add_argument('--annotation-file', type=str, default='', help='csv annotation file')
     parser.add_argument('--img', type=str, default='', help='Image file')
     parser.add_argument(
         '--show',
@@ -88,9 +91,20 @@ def main():
     else:
         dataset_info = DatasetInfo(dataset_info)
 
-    out_img_dir = os.path.join(args.set_root, 'pose_detections')
-    heatmaps_dir = os.path.join(args.set_root, 'heatmaps')
-    labels_file = os.path.join(args.set_root, 'crop_contact_classes.csv')
+    if args.set_dir != '':
+        out_img_dir = os.path.join(args.set_dir, 'pose_detections')
+        heatmaps_dir = os.path.join(args.set_dir, 'heatmaps')
+        labels_file = os.path.join(args.set_dir, 'crop_contact_classes.csv')
+        subject = "BUG"
+        camera = "BUG"
+    else:
+        out_img_dir = os.path.join(args.out_dir, 'pose_detections')
+        heatmaps_dir = os.path.join(args.out_dir, 'heatmaps')
+        labels_file = args.annotation_file
+        subject = os.path.basename(labels_file).split('.')[0]
+        camera = labels_file.split('/')[-2]
+        out_img_dir = os.path.join(out_img_dir, camera)
+        heatmaps_dir = os.path.join(heatmaps_dir, camera)
     labels_reader = csv.reader(open(labels_file))
     outputs = []
     for crop_path, contact_type in labels_reader:
@@ -99,15 +113,26 @@ def main():
         image_name = os.path.basename(crop_path)
         if not(image_name.endswith(".jpeg") or image_name.endswith(".jpg") or image_name.endswith(".png")):
             continue
+        # if image_name not in ["girls_113749_00.png", "girls_113749_01.png", "girls_127333_00.png"]:
+        #     continue
 
-        os.makedirs(out_img_dir, exist_ok=True)
-        out_file = os.path.join(out_img_dir, f'{image_name.replace("png", "jpg")}')
+        if args.set_dir == '':
+            os.makedirs(out_img_dir, exist_ok=True)
+        if args.set_dir != '':
+            out_file = os.path.join(out_img_dir, f'{image_name.replace("png", "jpg")}')
+        else:
+            out_file = os.path.join(out_img_dir, f'{subject}_{image_name.replace("png", "jpg")}')
 
         os.makedirs(heatmaps_dir, exist_ok=True)
-        heatmap_out_file = os.path.join(heatmaps_dir, f'{image_name}.npy')
+        if args.set_dir != '':
+            heatmap_out_file = os.path.join(heatmaps_dir, f'{image_name}.npy')
+            print(image_name)
+        else:
+            heatmap_out_file = os.path.join(heatmaps_dir, f'{subject}_{image_name}.npy')
+            print(f'{subject}_{image_name}')
 
-        print(image_name)
-
+        if args.set_dir == '':
+            crop_path = os.path.join(args.img_dir, crop_path)
         # test a single image, the resulting box is (x1, y1, x2, y2)
         mmdet_results = inference_detector(det_model, crop_path)
 
@@ -133,7 +158,7 @@ def main():
         for r, result in enumerate(pose_results):
             pose_mean_scores.append(result['keypoints'][:, 2].mean())
         ind_to_keep = np.argsort(pose_mean_scores)[::-1][:2]
-        pose_output = {'preds': [], 'bbxes': [], 'crop_path': crop_path, 'contact_type': 0}
+        pose_output = {'preds': [], 'bbxes': [], 'crop_path': crop_path, 'contact_type': contact_type}
         for r in ind_to_keep:
             result = pose_results[r]
             pose_output['preds'].append(result['keypoints'])
@@ -164,7 +189,10 @@ def main():
         else:
             print(f"returned_outputs has more than 1 element for {image_name}")
 
-    out_path = os.path.join(args.set_root, "pose_detections.json")
+    if args.set_dir != "":
+        out_path = os.path.join(args.set_dir, "pose_detections.json")
+    else:
+        out_path = os.path.join(args.out_dir, "pose_detections.json")
     print(f'\nwriting results to {out_path}')
     dump(outputs, out_path)
 

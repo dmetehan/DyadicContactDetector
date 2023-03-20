@@ -17,9 +17,11 @@ from PIL import Image, ImageDraw
 from torch import functional as F
 from dataset.utils import Aug, Options
 
+
 # Images should be cropped around interacting people pairs before using this class.
-class FlickrCI3DClassification(Dataset):
-    def __init__(self, set_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224), augment=(), is_test=False, bodyparts_dir=None):
+class BaseClassification(Dataset):
+    def __init__(self, set_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224),
+                 augment=(), is_test=False, bodyparts_dir=None, recalc_heatmaps=False):
 
         self.option = option
         if Aug.crop in augment:
@@ -78,9 +80,7 @@ class FlickrCI3DClassification(Dataset):
                 for p in range(len(self.pose_dets[idx]['bbxes'])):
                     for k in range(17):
                         heatmaps[p*17+k, :, :] = transforms.Resize((self.resize[0], self.resize[1]))(Image.fromarray(gauss_hmap[p * 17 + k, :, :]))
-                gauss_hmap = (heatmaps - np.min(heatmaps)) / (np.max(heatmaps) - np.min(heatmaps))
-            else:
-                gauss_hmap = (gauss_hmap - np.min(gauss_hmap)) / (np.max(gauss_hmap) - np.min(gauss_hmap))
+                gauss_hmap = heatmaps
             if rgb:
                 # noinspection PyTypeChecker
                 gauss_hmap_rgb = np.concatenate((gauss_hmap,
@@ -178,16 +178,13 @@ class FlickrCI3DClassification(Dataset):
         label = min(self.img_labels.loc[idx, "contact_type"], 1)
         joint_hmap_path = f'{os.path.join(self.joint_hmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
         if os.path.exists(joint_hmap_path):
-            joint_hmaps = np.array(np.load(joint_hmap_path), dtype=np.float32)
+            joint_hmaps = np.load(joint_hmap_path)
             if joint_hmaps.shape[1:] != self.resize:
                 heatmaps = np.zeros((34, self.resize[0], self.resize[1]), dtype=np.float32)
                 for p in range(len(self.pose_dets[idx]['bbxes'])):
                     for k in range(17):
                         heatmaps[p*17+k, :, :] = transforms.Resize((self.resize[0], self.resize[1]))(Image.fromarray(joint_hmaps[p * 17 + k, :, :]))
-                joint_hmaps = (heatmaps - np.min(heatmaps)) / (np.max(heatmaps) - np.min(heatmaps))
-            else:
-                joint_hmaps = (joint_hmaps - np.min(joint_hmaps)) / (np.max(joint_hmaps) - np.min(joint_hmaps))
-
+                joint_hmaps = heatmaps
             if rgb:
                 crop = Image.open(f'{os.path.join(self.crops_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}')
                 # noinspection PyTypeChecker
@@ -336,107 +333,6 @@ class FlickrCI3DClassification(Dataset):
             # elif aug == Aug.rotate:
             # TODO: Implement random rotation
 
-
-def init_datasets(train_dir, test_dir, batch_size, option=1, val_split=0.2, target_size=(224, 224), num_workers=2,
-                  augment=(), bodyparts_dir=None):
-    random_seed = 1
-    train_dataset = FlickrCI3DClassification(train_dir, option=option, target_size=target_size, augment=augment, bodyparts_dir=bodyparts_dir)
-    # Creating data indices for training and validation splits:
-    dataset_size = len(train_dataset)
-    indices = list(range(dataset_size))
-    np.random.seed(random_seed)
-    torch.manual_seed(random_seed)
-    no_contact_inds = [i for i in indices if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 0]
-    contact_inds = [i for i in indices if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 1]
-    train_inds = no_contact_inds[int(np.floor(val_split * len(no_contact_inds))):] \
-                 + contact_inds[int(np.floor(val_split * len(contact_inds))):]
-    val_indices = no_contact_inds[:int(np.floor(val_split * len(no_contact_inds)))] \
-                 + contact_inds[:int(np.floor(val_split * len(contact_inds)))]
-    train_weights, val_weights = [0 for _ in range(len(indices))], [0 for _ in range(len(indices))]
-    for i in train_inds:
-        train_weights[i] = 1  # 3.35 if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 1 else 1
-    for i in val_indices:
-        val_weights[i] = 1  # 3.35 if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 1 else 1
-    train_dataset.set_train_inds(train_inds)
-    # Creating data samplers: WeightedRandomSampler
-    train_sampler = WeightedRandomSampler(train_weights, len(train_inds), replacement=False)
-    val_sampler = WeightedRandomSampler(val_weights, len(val_indices), replacement=False)
-
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, num_workers=num_workers)
-    validation_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=val_sampler, num_workers=num_workers)
-
-    test_dataset = FlickrCI3DClassification(test_dir, option=option, target_size=target_size, is_test=True, bodyparts_dir=bodyparts_dir)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-
-    return train_loader, validation_loader, test_loader
-
-
-def test_class():
-    option = Options.jointmaps
-    train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    # train_dataset = FlickrCI3DClassification(train_dir, option=option)
-    test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
-    # test_dataset = FlickrCI3DClassification(test_dir, option=option)
-    train_loader, validation_loader, test_loader = init_datasets(train_dir, test_dir, batch_size=1, option=option, num_workers=1, bodyparts_dir="bodyparts_binary")
-    # print(len(train_loader))
-    dataiter = iter(train_loader)
-    # for heatmap, label in dataiter:
-    #     # continue
-    #     print(np.count_nonzero(label), len(label))
-    #     cv2.imshow("image", np.array(transforms.ToPILImage()(heatmap[0, 0])))
-    #     cv2.waitKey()
-    for heatmap, label in validation_loader:
-        print(np.count_nonzero(label), len(label))
-    # for heatmap, label in test_loader:
-    #     continue
-
-
-def test_get_bodyparts():
-    option = 2
-
-    train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    train_dataset = FlickrCI3DClassification(train_dir, option=option, bodyparts_dir="bodyparts_binary", is_test=True)
-    train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=4)
-    dataiter = iter(train_loader)
-    count = 0
-    for heatmap, label in dataiter:
-        count += len(label)
-        if count % 100 == 0:
-            print(count)
-
-    test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
-    test_dataset = FlickrCI3DClassification(test_dir, option=option, bodyparts_dir="bodyparts_binary",
-                                            is_test=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
-    dataiter = iter(test_loader)
-    count = 0
-    for heatmap, label in dataiter:
-        count += len(label)
-        if count % 100 == 0:
-            print(count)
-
-
-def test_get_heatmaps():
-    option = 2
-    train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    train_dataset = FlickrCI3DClassification(train_dir, option=option)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32)
-    dataiter = iter(train_loader)
-    count = 0
-    for heatmap, label in dataiter:
-        count += len(label)
-        if count % 100 == 0:
-            print(count)
-
-    test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
-    test_dataset = FlickrCI3DClassification(test_dir, option=option)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
-    dataiter = iter(test_loader)
-    count = 0
-    for heatmap, label in dataiter:
-        count += len(label)
-        if count % 100 == 0:
-            print(count)
 
 
 if __name__ == '__main__':

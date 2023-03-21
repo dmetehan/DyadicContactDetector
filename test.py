@@ -1,15 +1,14 @@
 import torch
 import matplotlib.pyplot as plt
-import numpy as np
 from sklearn.metrics import confusion_matrix, accuracy_score
 import seaborn as sn
 import pandas as pd
 from ContactClassifier import ContactClassifier
-from dataset.utils import Aug, Options
+from utils import Options
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 OPTION = Options.jointmaps_rgb_bodyparts
-TEST_SET = False
+TEST_SET = True
 BODYPARTS_DIR = "bodyparts_binary"
 model = ContactClassifier(option=OPTION)
 model.eval()
@@ -26,7 +25,7 @@ test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassifica
 # test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/test'
 classes = ("no touch", "touch")
 
-all_models = ['joint_hmaps_rgb_pretrainedCopied_bodyparts_strat_112_reproduction_BCEWithLogitsLoss_AugCorrect_hflip_crop_20230316_174637_8']
+all_models = ['joint_hmaps_rgb_pretrainedCopied_bodyparts_strat_112_reproduction_BCEWithLogitsLoss_AugCorrect_hflip_crop_20230320_153911_2']
 for model_name in all_models:
     if 'bodyparts' not in model_name:
         if 'gauss' in model_name:
@@ -65,7 +64,7 @@ for model_name in all_models:
         for element in model_name.split('_'):
             if 'last' in element:
                 DROPOUT[1] = float(element[4:])
-    model = ContactClassifier(backbone="resnet50", weights="IMAGENET1K_V2", option=OPTION, dropout=DROPOUT)
+    model = ContactClassifier(backbone="resnet50", weights="IMAGENET1K_V2", option=OPTION)
     model.load_state_dict(torch.load(f"runs/{model_name}"))
     model.eval()
     model = model.to(device)

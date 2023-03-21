@@ -1,0 +1,178 @@
+import json
+import os
+from typing import List, Dict
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+import pandas as pd
+from scipy.stats import multivariate_normal
+from torch.utils.data import Dataset
+from torch.utils.data.sampler import SubsetRandomSampler
+from torchvision import datasets
+from torchvision.io import read_image
+from torchvision.transforms import ToTensor, transforms
+from PIL import Image
+
+
+# Images should be cropped around interacting people pairs before using this class.
+class FlickrCI3DClassification(Dataset):
+    def __init__(self, set_dir, transform=None, target_transform=None, option=1):
+        # option can be 1, 2, 3 or 4
+        # 1: gaussian heatmaps around detected keypoints
+        # 2: detected heatmaps mapped onto cropped image around interacting people
+        # 3: 1 + rgb image
+        # 4: 2 + rgb image
+        assert option in [1, 2, 3, 4], f'option parameter {option} can be either 1, 2, 3 or 4.'
+        self.option = option
+        labels_file = os.path.join(set_dir, "crop_contact_classes.csv")
+        dets_file = os.path.join(set_dir, "pose_detections.json")
+        self.heatmaps_dir = os.path.join(set_dir, "heatmaps")
+        self.gauss_hmaps_dir = os.path.join(set_dir, "gauss_hmaps")
+        os.makedirs(self.gauss_hmaps_dir, exist_ok=True)
+        img_labels = pd.read_csv(labels_file)
+        non_ambig_inds = img_labels.index[img_labels['contact_type'] != 1].tolist()
+        self.img_labels = img_labels[img_labels['contact_type'] != 1].reset_index()  # remove ambiguous class
+        self.pose_dets = json.load(open(dets_file))
+        self.pose_dets: List[Dict]
+        self.pose_dets = [self.pose_dets[i] for i in non_ambig_inds]
+        self.check_crop_paths(self.img_labels, self.pose_dets)
+        self.transform = transform
+        self.target_transform = target_transform
+
+    @staticmethod
+    def check_crop_paths(img_labels, pose_dets):
+        for i in range(len(img_labels)):
+            assert img_labels.loc[i, 'crop_path'] == pose_dets[i]['crop_path'],\
+                f'{img_labels.loc[i, "crop_path"]} != {pose_dets[i]["crop_path"]}'
+
+    def __len__(self):
+        return len(self.img_labels)
+
+    def get_gaussians(self, idx, rgb=False):
+        # TODO: add rgb option
+        # label = self.img_labels.loc[idx, "contact_type"]
+        # label = min(label, 1)
+        label = 1
+        gauss_hmap_path = f'{os.path.join(self.gauss_hmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
+        if os.path.exists(gauss_hmap_path):
+            return None, label
+            gauss_hmap = np.load(gauss_hmap_path)
+            return gauss_hmap, label
+        print("idx", idx)
+        print(len(self.img_labels))
+        label = self.img_labels.loc[idx, "contact_type"]
+        crop = Image.open(self.img_labels.loc[idx, "crop_path"])
+        width, height = crop.size
+        x = np.linspace(0, width - 1, width)
+        y = np.linspace(0, height - 1, height)
+        xx, yy = np.meshgrid(x, y)
+        xxyy = np.c_[xx.ravel(), yy.ravel()]
+        heatmaps = np.zeros((34, 224, 224), dtype=np.float32)
+        if len(self.pose_dets[idx]['preds']) == 0:
+            return heatmaps, label
+        for p in range(len(self.pose_dets[idx]['preds'])):
+            for i in range(len(self.pose_dets[idx]['preds'][p])):
+                m = self.pose_dets[idx]['preds'][p][i][:2]
+                s = 10 * np.eye(2)
+                k = multivariate_normal(mean=m, cov=s)
+                zz = k.pdf(xxyy)
+                # reshape and plot image
+                img = Image.fromarray(zz.reshape((height, width)))
+                # noinspection PyTypeChecker
+                img = np.array(img.resize((224, 224)))
+                heatmaps[17 * p + i, :, :] = img
+
+        np.save(gauss_hmap_path, heatmaps)
+        # noinspection PyArgumentList
+        # heatmap = (heatmaps.max(axis=0)*2550).astype(np.uint8)
+        # heatmap_img = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+        # print(np.max(heatmap_img), np.min(heatmap_img))
+        # img = cv2.resize(cv2.imread(self.img_labels.loc[idx, "crop_path"]), (224, 224))
+        # print(heatmap_img.shape, img.shape)
+        # super_imposed_img = cv2.addWeighted(heatmap_img, 0.5, img, 0.5, 0)
+        # cv2.imshow('frame', super_imposed_img)
+        # cv2.waitKey()
+        # plt.imshow(super_imposed_img)
+        # plt.show()
+        return heatmaps, label
+
+    def get_heatmaps(self, idx, rgb=False):
+        # TODO: add scaling and padding to bring the two heatmaps to the same size as the crop I
+        # TODO: add rgb option
+        label = self.img_labels.loc[idx, "contact_type"]
+        label = min(label, 1)
+        heatmap_path = f'{os.path.join(self.heatmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
+        if not os.path.exists(heatmap_path):
+            # no detections
+            return np.zeros((34, 96, 72), dtype=np.float32), label
+        heatmap = np.load(heatmap_path)
+        if heatmap.shape[0] == 1:
+            # only 1 detection
+            heatmap = np.concatenate(
+                (heatmap, np.zeros((1, heatmap.shape[1], heatmap.shape[2], heatmap.shape[3]), dtype=np.float32)))
+        heatmap = heatmap.reshape((heatmap.shape[1] * 2, heatmap.shape[2], heatmap.shape[3]))
+        if self.transform:
+            heatmap = self.transform(heatmap)
+        if self.target_transform:
+            label = self.target_transform(label)
+        return heatmap, label
+
+    def __getitem__(self, idx):
+        if idx >= len(self):
+            raise 
+IndexError()
+        print(idx)
+        if self.option == 1:
+            return self.get_gaussians(idx)
+        elif self.option == 2:
+            return self.get_heatmaps(idx)
+        elif self.option == 3:
+            return self.get_gaussians(idx, rgb=True)
+        elif self.option == 4:
+            return self.get_heatmaps(idx, rgb=True)
+        else:
+            raise NotImplementedError()
+
+
+def init_datasets(train_dir, test_dir, batch_size):
+    random_seed = 1
+    validation_split = .2
+    train_dataset = FlickrCI3DClassification(train_dir)
+    # Creating data indices for training and validation splits:
+    dataset_size = len(train_dataset)
+    indices = list(range(dataset_size))
+    split = int(np.floor(validation_split * dataset_size))
+    np.random.seed(random_seed)
+    np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:], indices[:split]
+    # Creating PT data samplers and loaders:
+    train_sampler = SubsetRandomSampler(train_indices)
+    valid_sampler = SubsetRandomSampler(val_indices)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler)
+    validation_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=valid_sampler)
+
+    test_dataset = FlickrCI3DClassification(test_dir)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+
+    return train_loader, validation_loader, test_loader
+
+
+def test_class():
+    train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/train'
+    train_dataset = FlickrCI3DClassification(train_dir)
+    test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/test'
+    test_dataset = FlickrCI3DClassification(test_dir)
+    print(len(train_dataset))
+    for heatmap, label in train_dataset:
+        continue
+        # print(label)
+        # cv2.imshow("image", np.array(transforms.ToPILImage()(heatmap[0])))
+        # cv2.waitKey()
+    for heatmap, label in test_dataset:
+        continue
+
+
+if __name__ == '__main__':
+    test_class()

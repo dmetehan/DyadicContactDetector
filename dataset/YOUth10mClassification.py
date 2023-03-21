@@ -1,21 +1,14 @@
-import json
 import os
-from typing import List, Dict
 
-import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
 import pandas as pd
 from scipy.stats import multivariate_normal
 from torch.utils.data import Dataset
-from torch.utils.data.sampler import SubsetRandomSampler, WeightedRandomSampler
-from torchvision import datasets
-from torchvision.io import read_image
+from torch.utils.data.sampler import WeightedRandomSampler
 from torchvision.transforms import transforms
-from PIL import Image, ImageDraw
-from torch import functional as F
-from dataset.utils import Aug, Options
+from PIL import Image
+from utils import Aug
 
 
 # Images should be cropped around interacting people pairs before using this class.

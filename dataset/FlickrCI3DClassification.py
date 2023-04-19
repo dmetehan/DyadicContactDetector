@@ -1,5 +1,6 @@
 import json
 import os
+from argparse import ArgumentParser
 from typing import List, Dict
 
 import numpy as np
@@ -9,13 +10,16 @@ import pandas as pd
 from scipy.stats import multivariate_normal
 from torch.utils.data import Dataset
 from torch.utils.data.sampler import WeightedRandomSampler
-from torchvision.transforms import transforms, InterpolationMode
+from torchvision.transforms import InterpolationMode
+import torchvision.transforms.v2 as transforms
 from PIL import Image
-from utils import Aug, Options
+from utils import Aug, Options, parse_config
+
 
 # Images should be cropped around interacting people pairs before using this class.
 class FlickrCI3DClassification(Dataset):
-    def __init__(self, set_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224), augment=(), is_test=False, bodyparts_dir=None):
+    def __init__(self, set_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224),
+                 augment=(), is_test=False, bodyparts_dir=None):
 
         self.option = option
         if Aug.crop in augment:
@@ -36,6 +40,7 @@ class FlickrCI3DClassification(Dataset):
         img_labels = pd.read_csv(labels_file)
         non_ambig_inds = img_labels.index[img_labels['contact_type'] != 1].tolist()
         self.img_labels = img_labels[img_labels['contact_type'] != 1].reset_index(drop=True)  # remove ambiguous class
+        self.img_labels['contact_type'] = self.img_labels['contact_type'] // 2  # convert touch labels from 2 to 1.
         self.pose_dets = json.load(open(dets_file))
         self.pose_dets: List[Dict]
         self.pose_dets = [self.pose_dets[i] for i in non_ambig_inds]
@@ -48,6 +53,8 @@ class FlickrCI3DClassification(Dataset):
         self.rand_rotate = transforms.RandomRotation(10)
         self.flip_pairs_pose = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16]]
         self.flip_pairs_bodyparts = [[3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14]]
+        self.debug_printed = False
+        self.color_aug = transforms.Compose([transforms.RandomPhotometricDistort(), transforms.GaussianBlur(3, [0.01, 1.0])])
 
     def set_train_inds(self, train_inds):
         self.train_inds = train_inds
@@ -63,7 +70,6 @@ class FlickrCI3DClassification(Dataset):
 
     def get_gaussians(self, idx, rgb=False):
         label = self.img_labels.loc[idx, "contact_type"]
-        label = min(label, 1)
         gauss_hmap_path = f'{os.path.join(self.gauss_hmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
         crop = Image.open(f'{os.path.join(self.crops_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}')
         if os.path.exists(gauss_hmap_path):
@@ -171,7 +177,7 @@ class FlickrCI3DClassification(Dataset):
         return x1, y1, x2, y2
 
     def get_heatmaps(self, idx, rgb=False):
-        label = min(self.img_labels.loc[idx, "contact_type"], 1)
+        label = self.img_labels.loc[idx, "contact_type"]
         joint_hmap_path = f'{os.path.join(self.joint_hmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
         if os.path.exists(joint_hmap_path):
             joint_hmaps = np.array(np.load(joint_hmap_path), dtype=np.float32)
@@ -284,11 +290,13 @@ class FlickrCI3DClassification(Dataset):
             augment = ()
         if idx >= len(self):
             raise IndexError()
-        if self.option == 0:
+        if self.option == Options.debug:
             # for debugging
-            print("DEBUG: ON")
-            data = np.zeros((1, self.resize[0], self.resize[1]))
-            label = 0
+            if not self.debug_printed:
+                print("DEBUG: ON")
+                self.debug_printed = True
+            data = np.zeros((52, self.resize[0], self.resize[1]), dtype=np.float32)
+            label = self.img_labels.loc[idx, "contact_type"]
         elif self.option == Options.gaussian:
             data, label = self.get_gaussians(idx)
         elif self.option == Options.jointmaps:
@@ -309,7 +317,7 @@ class FlickrCI3DClassification(Dataset):
             raise NotImplementedError()
 
         self.do_augmentations(data, augment)
-        return data, label
+        return idx, data, label
 
     def do_augmentations(self, data, augment):
         for aug in augment:
@@ -333,24 +341,44 @@ class FlickrCI3DClassification(Dataset):
                 data = data[:, i:i+self.target_size[0], j:j+self.target_size[1]]
             # elif aug == Aug.rotate:
             # TODO: Implement random rotation
+            elif aug == Aug.color:
+                # random color-based augmentations to the rgb channels
+                if self.option in [Options.gaussian_rgb, Options.gaussian_rgb_bodyparts,
+                                   Options.jointmaps_rgb, Options.jointmaps_rgb_bodyparts]:
+                    # rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :], (1, 2, 0)).astype(np.uint8))
+                    # plt.imshow(rgb)
+                    # plt.show()
+                    # print(data[34:37, :, :].mean())
+                    data[34:37, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[34:37, :, :],
+                                                                                                 (1, 2, 0)).astype(np.uint8))),
+                                                     (2, 0, 1)).astype(np.float32) / 255
+                    # rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :], (1, 2, 0)).astype(np.uint8))
+                    # plt.imshow(rgb)
+                    # plt.show()
 
 
 def init_datasets_with_cfg(train_dir, test_dir, cfg):
     return init_datasets(train_dir, test_dir, cfg.BATCH_SIZE, option=cfg.OPTION, val_split=0.2,
-                         target_size=cfg.TARGET_SIZE, num_workers=2,
+                         target_size=cfg.TARGET_SIZE, num_workers=8,
                          augment=cfg.AUGMENTATIONS, bodyparts_dir=cfg.BODYPARTS_DIR, stratified=cfg.STRATIFIED)
+
+def init_datasets_with_cfg_dict(train_dir, test_dir, config_dict):
+    return init_datasets(train_dir, test_dir, config_dict["BATCH_SIZE"], option=config_dict["OPTION"], val_split=0.2,
+                         target_size=config_dict["TARGET_SIZE"], num_workers=8,
+                         augment=config_dict["AUGMENTATIONS"], bodyparts_dir=config_dict["BODYPARTS_DIR"], stratified=config_dict["STRATIFIED"])
 
 def init_datasets(train_dir, test_dir, batch_size, option=Options.debug, val_split=0.2, target_size=(224, 224), num_workers=2,
                   augment=(), bodyparts_dir=None, stratified=True):
     random_seed = 1
     train_dataset = FlickrCI3DClassification(train_dir, option=option, target_size=target_size, augment=augment, bodyparts_dir=bodyparts_dir)
     # Creating data indices for training and validation splits:
-    dataset_size = len(train_dataset)
-    indices = list(range(dataset_size))
+    indices = list(train_dataset.img_labels.index)
     np.random.seed(random_seed)
     torch.manual_seed(random_seed)
-    no_contact_inds = [i for i in indices if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 0]
-    contact_inds = [i for i in indices if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 1]
+    no_contact_inds = list(train_dataset.img_labels[train_dataset.img_labels["contact_type"] == 0].index)
+    contact_inds = list(train_dataset.img_labels[train_dataset.img_labels["contact_type"] == 1].index)
+    np.random.shuffle(no_contact_inds)
+    np.random.shuffle(contact_inds)
     train_inds = no_contact_inds[int(np.floor(val_split * len(no_contact_inds))):] \
                  + contact_inds[int(np.floor(val_split * len(contact_inds))):]
     val_indices = no_contact_inds[:int(np.floor(val_split * len(no_contact_inds)))] \
@@ -358,11 +386,11 @@ def init_datasets(train_dir, test_dir, batch_size, option=Options.debug, val_spl
     train_weights, val_weights = [0 for _ in range(len(indices))], [0 for _ in range(len(indices))]
     for i in train_inds:
         if stratified:
-            train_weights[i] = 3.35 if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 1 else 1
+            train_weights[i] = 3.35 if train_dataset.img_labels.loc[i, "contact_type"] == 1 else 1
         else:
             train_weights[i] = 1
     for i in val_indices:
-        val_weights[i] = 1  # 3.35 if min(train_dataset.img_labels.loc[i, "contact_type"], 1) == 1 else 1
+        val_weights[i] = 1
     train_dataset.set_train_inds(train_inds)
     # Creating data samplers: WeightedRandomSampler
     train_sampler = WeightedRandomSampler(weights=train_weights, num_samples=len(train_inds), replacement=True)
@@ -375,6 +403,63 @@ def init_datasets(train_dir, test_dir, batch_size, option=Options.debug, val_spl
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return train_loader, validation_loader, test_loader
+
+
+def test_visually(data):
+    heatmaps = data[:34, :, :].numpy()
+    rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :].numpy(), (1, 2, 0)).astype(np.uint8))
+    bodyparts = data[38:, :, :].numpy()  # ignoring the background map for visualization purposes at index 37
+    heatmap_img = Image.fromarray((heatmaps.max(axis=0)*255).astype(np.uint8))
+    super_imposed_img = Image.blend(rgb.convert('RGBA'), heatmap_img.convert('RGBA'), alpha=0.5)
+    # plt.imshow(super_imposed_img)
+    # plt.show()
+    bodyparts_img = Image.fromarray((bodyparts.max(axis=0)*255).astype(np.uint8))
+    super_imposed_img = Image.blend(rgb.convert('RGBA'), bodyparts_img.convert('RGBA'), alpha=0.5)
+    # plt.imshow(super_imposed_img)
+    # plt.show()
+
+
+def test_input(cfg, train_dir, test_dir):
+    # Check if the prepared input makes sense!
+    cfg.OPTION = Options.jointmaps_rgb_bodyparts
+    train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir, test_dir, cfg)
+    for loader_name, data_loader in zip(["TRAINING", "VALIDATION", "TEST"], [train_loader, validation_loader, test_loader]):
+        print(f"Visualizing images from the {loader_name} set:")
+        for _, data, labels in data_loader:
+            for datum, label in zip(data, labels):
+                print("TOUCH" if label else "NO TOUCH")
+                test_visually(datum)
+            break
+
+
+def test_overlaps(cfg, train_dir, test_dir):
+    # Check if train_loader samples are not overlapping with validation_loader
+    train_loader, validation_loader, _ = init_datasets_with_cfg(train_dir, test_dir, cfg)
+    validation_indices = [idx.item() for indices, _, _ in validation_loader for idx in indices]
+    print(validation_indices)
+    train_indices = [idx.item() for indices, _, _ in train_loader for idx in indices]
+    print(train_indices)
+    assert len(set(train_indices).intersection(set(validation_indices))) == 0
+    print(len(train_indices), len(set(train_indices)))
+
+
+def test_distribution(cfg, train_dir, test_dir):
+    # Check the class distribution in validation and test sets
+    _, validation_loader, test_loader = init_datasets_with_cfg(train_dir, test_dir, cfg)
+    validation_labels = [label.item() for _, _, labels in validation_loader for label in labels]
+    touch = np.count_nonzero(validation_labels)
+    no_touch = len(validation_labels) - touch
+    print(f"VALIDATION - Touch: {touch} ({100 * touch / len(validation_labels):.2f}%), "
+          f"No Touch: {no_touch} ({100 * no_touch / len(validation_labels):.2f}%)")
+    val_touch_percent = 100 * touch / len(validation_labels)
+    test_labels = [label.item() for _, _, labels in test_loader for label in labels]
+    touch = np.count_nonzero(test_labels)
+    no_touch = len(test_labels) - touch
+    print(f"TEST - Touch: {touch} ({100 * touch / len(test_labels):.2f}%), "
+          f"No Touch: {no_touch} ({100 * no_touch / len(test_labels):.2f}%)")
+    test_touch_percent = 100 * touch / len(test_labels)
+    assert abs(val_touch_percent - test_touch_percent) < 1
+
 
 
 def test_class():
@@ -401,7 +486,7 @@ def test_get_bodyparts():
     option = 2
 
     train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    train_dataset = FlickrCI3DClassification(train_dir, option=option, bodyparts_dir="bodyparts_binary", is_test=True)
+    train_dataset = FlickrCI3DClassification(train_dir, option=option, bodyparts_dir="bodyparts_binary")
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=4)
     dataiter = iter(train_loader)
     count = 0
@@ -445,8 +530,22 @@ def test_get_heatmaps():
             print(count)
 
 
+def main():
+    train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
+    test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
+    parser = ArgumentParser()
+    parser.add_argument('config_file', help='config file')
+    args = parser.parse_args()
+    if not os.path.exists(args.config_file):
+        raise FileNotFoundError(f"{args.config_file} could not be found!")
+    cfg = parse_config(args.config_file)
+    # test_overlaps(cfg, train_dir_ssd, test_dir_ssd)
+    # test_distribution(cfg, train_dir_ssd, test_dir_ssd)
+    test_input(cfg, train_dir_ssd, test_dir_ssd)
+
+
 if __name__ == '__main__':
-    # TODO: Test if the channels are matching (overlay poses and bodyparts on the rgb image)
-    test_class()
+    main()
+    # test_class()
     # test_get_heatmaps()
     # test_get_bodyparts()

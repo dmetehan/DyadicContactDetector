@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from torch import nn, optim
+
 from utils import Options
 
 
@@ -27,6 +29,15 @@ class ContactClassifier(nn.Module):
 
 		# x = F.log_softmax(x, dim=1)
 		return x
+
+
+def initialize_model(cfg, device):
+	model = ContactClassifier(backbone="resnet50", weights="IMAGENET1K_V2" if cfg.PRETRAINED else None,
+                              option=cfg.OPTION,
+                              copy_rgb_weights=cfg.COPY_RGB_WEIGHTS)
+	loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(cfg.LOSS_WEIGHTS).to(device))
+	optimizer = optim.AdamW(model.parameters(), lr=cfg.LR)
+	return model, optimizer, loss_fn
 
 
 def init_model(option=Options.jointmaps):

@@ -84,6 +84,7 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
         log_dir = f'{exp_dir}/{experiment_name}_{timestamp}/Training vs. Validation Loss_Validation'
         tag = 'Training vs. Validation Loss'  # Replace with your desired tags
         best_vloss = find_last_values_tensorboard(log_dir, tag)
+        print("Best validation loss so far:", best_vloss)
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         best_vloss = 1_000_000.

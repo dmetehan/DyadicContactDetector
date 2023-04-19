@@ -75,11 +75,3 @@ def find_last_values_tensorboard(log_dir, tag):
     scalar_events = event_acc.Scalars(tag)
     assert len(scalar_events) > 0, f"No events found for tag '{tag}' in {log_dir}."
     return scalar_events[-1].value
-
-
-log_dir = '/mnt/hdd1/GithubRepos/ContactClassification/experiments/' \
-          '006_jointmaps_rgb_bodyparts_56_Aug-swap-color_strat_lr0.00170406_b8_20230419_104001/' \
-          'Training vs. Validation Loss_Validation'  # Replace with your log directory
-tag = 'Training vs. Validation Loss'  # Replace with your desired tags
-last_values = find_last_values_tensorboard(log_dir, tag)
-print(last_values)

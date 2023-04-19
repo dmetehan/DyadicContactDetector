@@ -19,14 +19,14 @@
 #--img-root "/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification/test/crops" \
 #--out-img-root "/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification/test/vis_results"
 
-python /mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/YOUth_person_detector.py\
-mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py\
-mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth\
-mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py\
-mmpose-utils/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth\
---set-dir "/home/sac/Encfs/YOUth/10m/pci_frames/test"\
---out-dir "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/test"\
---annotation-dir "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/contact/test"\
+~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/YOUth_person_detector.py \
+mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py \
+mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
+mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py \
+mmpose-utils/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth \
+--set-dir "/home/sac/Encfs/YOUth/10m/pci_frames/all" \
+--out-dir "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all" \
+--annotation-dir "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/contact" \
 --camera "cam1"
 
 #~/anaconda3/envs/openmmlab/bin/python \

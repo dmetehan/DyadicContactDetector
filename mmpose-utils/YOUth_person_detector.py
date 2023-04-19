@@ -6,7 +6,8 @@ from PIL import Image
 from argparse import ArgumentParser
 
 import numpy as np
-
+import sys
+sys.path.extend(["/mnt/hdd1/GithubRepos/ContactClassification"])
 from prep_crops import crop
 from mmcv import Config, dump, load
 from mmpose.apis import (inference_top_down_pose_model, init_pose_model,
@@ -56,49 +57,49 @@ def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, o
         image_name = os.path.basename(img_path)
         if not(image_name.endswith(".jpeg") or image_name.endswith(".jpg") or image_name.endswith(".png")):
             continue
-        # if image_name not in ["girls_113749_00.png", "girls_113749_01.png", "girls_127333_00.png"]:
-        #     continue
 
-        print(f'{subject}_{image_name}')
+        print(f'{subject}/{image_name}')
 
-        out_file = os.path.join(out_img_dir, f'{subject}_{image_name.replace("png", "jpg")}')
-        crop_file = os.path.join(crops_dir, f'{subject}_{image_name.replace("png", "jpg")}')
-        heatmap_out_file = os.path.join(heatmaps_dir, f'{subject}_{image_name}.npy')
-        if os.path.exists(out_file) and os.path.exists(heatmap_out_file):
-            print(f'Both {out_file} and {heatmap_out_file} exists.')
+        out_file = os.path.join(out_img_dir, subject, image_name.replace("png", "jpg"))
+        crop_file = os.path.join(crops_dir, subject, image_name.replace("png", "jpg"))
+        heatmap_out_file = os.path.join(heatmaps_dir, f"{subject}_{image_name}.npy")
+        if os.path.exists(crop_file) and os.path.exists(heatmap_out_file):
+            print(f'Both {crop_file} and {heatmap_out_file} exists.')
             continue
-        elif os.path.exists(out_file):
-            raise FileNotFoundError(f'{heatmap_out_file} not found whereas {out_file} exists')
+        elif os.path.exists(crop_file):
+            print(f'{heatmap_out_file} not found whereas {crop_file} exists')
         elif os.path.exists(heatmap_out_file):
-            raise FileNotFoundError(f'{out_file} not found whereas {heatmap_out_file} exists')
+            raise FileNotFoundError(f'{crop_file} not found whereas {heatmap_out_file} exists')
 
-        img_path = os.path.join(img_dir, img_path)
-        # test a single image, the resulting box is (x1, y1, x2, y2)
-        mmdet_results = inference_detector(det_model, img_path)
+        if not os.path.exists(crop_file):
+            img_path = os.path.join(img_dir, img_path)
+            # test a single image, the resulting box is (x1, y1, x2, y2)
+            mmdet_results = inference_detector(det_model, img_path)
 
-        # keep the person class bounding boxes.
-        person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
-        # test a single image, with a list of bboxes.
+            # keep the person class bounding boxes.
+            person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
+            # test a single image, with a list of bboxes.
 
-        confidences = []
-        for i in range(len(person_results)):
-            confidences.append(person_results[i]['bbox'][-1])
+            confidences = []
+            for i in range(len(person_results)):
+                confidences.append(person_results[i]['bbox'][-1])
 
-        bbxes = []
-        person_ids = np.argsort(confidences)[::-1][:2]
-        # Get two best bounding box results and crop around them. Save the crops
-        for i in person_ids:
-            bbxes.append(person_results[i]['bbox'][:-1])
+            bbxes = []
+            person_ids = np.argsort(confidences)[::-1][:2]
+            # Get two best bounding box results and crop around them. Save the crops
+            for i in person_ids:
+                bbxes.append(person_results[i]['bbox'][:-1])
 
-        if len(bbxes) == 1:
-            bbxes.append(bbxes[0])
-        if len(bbxes) == 0:
-            # no detections
-            continue
+            if len(bbxes) == 1:
+                bbxes.append(bbxes[0])
+            if len(bbxes) == 0:
+                # no detections
+                continue
 
-        img = Image.open(img_path)
-        img_crop = crop(img, bbxes, [0, 1])
-        img_crop.save(crop_file)
+            img = Image.open(img_path)
+            img_crop = crop(img, bbxes, [0, 1])
+            os.makedirs(os.path.dirname(crop_file), exist_ok=True)
+            img_crop.save(crop_file)
 
         # Rerun the bounding box detector on the cropped images.
         # test a single image, the resulting box is (x1, y1, x2, y2)
@@ -208,11 +209,17 @@ def main():
     assert args.det_config is not None
     assert args.det_checkpoint is not None
 
-    # Put these as arguments
-    # args.set_dir = "/home/sac/Encfs/YOUth/10m/pci_frames/test"
-    # args.out_dir = "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/test"
-    # args.annotation_dir = "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/contact/test"
-    # args.camera = "cam1"
+    '''
+    ~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/YOUth_person_detector.py \
+    mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py \
+    mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
+    mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py \
+    mmpose-utils/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth \
+    --set-dir "/home/sac/Encfs/YOUth/10m/pci_frames/all" \
+    --out-dir "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all" \
+    --annotation-dir "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/contact" \
+    --camera "cam1"
+    '''
 
     det_model = init_detector(
         args.det_config, args.det_checkpoint, device=args.device.lower())
@@ -231,16 +238,6 @@ def main():
             subject = file.split(".")[0]
             img_dir = os.path.join(args.set_dir, subject, args.camera)
             annotation_file = os.path.join(args.annotation_dir, args.camera, file)
-            # command = '/home/sac/anaconda3/envs/openmmlab/bin/python '\
-            #           '/mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/top_down_img_inference_with_mmdet.py '\
-            #           '/mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py '\
-            #           '/mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth '\
-            #           '/mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py '\
-            #           '/mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth '\
-            #           f'--img-dir {img_dir} '\
-            #           f'--out-dir {args.out_dir} '\
-            #           f'--annotation-file {annotation_file}'
-            # print(command)
             run_mmpose(img_dir, args.out_dir, annotation_file, det_model, pose_model, args, outputs)
     print(f'\nwriting results to {out_path}')
     dump(outputs, out_path)

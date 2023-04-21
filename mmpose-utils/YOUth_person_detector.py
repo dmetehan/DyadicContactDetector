@@ -2,9 +2,12 @@
 import os
 import csv
 import warnings
+from collections import defaultdict
+
 from PIL import Image
 from argparse import ArgumentParser
 
+import pandas as pd
 import numpy as np
 import sys
 sys.path.extend(["/mnt/hdd1/GithubRepos/ContactClassification"])
@@ -24,8 +27,10 @@ except ImportError:
     print("ImportError")
     has_mmdet = False
 
+counter = 0
 
-def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, outputs):
+def run_mmpose(img_dir, out_dir, labels_file, det_model, pose_model, args, outputs):
+    global counter
     # build the dataloader
     dataset = pose_model.cfg.data['test']['type']
     dataset_info = pose_model.cfg.data['test'].get('dataset_info', None)
@@ -40,7 +45,6 @@ def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, o
     out_img_dir = os.path.join(out_dir, 'pose_detections')
     heatmaps_dir = os.path.join(out_dir, 'heatmaps')
     crops_dir = os.path.join(out_dir, 'crops')
-    labels_file = annotation_file
     subject = os.path.basename(labels_file).split('.')[0]
     camera = labels_file.split('/')[-2]
     out_img_dir = os.path.join(out_img_dir, camera)
@@ -55,8 +59,9 @@ def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, o
         if img_path == 'img_path':
             continue  # skip header
         image_name = os.path.basename(img_path)
-        if not(image_name.endswith(".jpeg") or image_name.endswith(".jpg") or image_name.endswith(".png")):
-            continue
+        # if not(image_name.endswith(".jpeg") or image_name.endswith(".jpg") or image_name.endswith(".png")):
+        #     print(image_name)
+        #     continue
 
         print(f'{subject}/{image_name}')
 
@@ -65,41 +70,47 @@ def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, o
         heatmap_out_file = os.path.join(heatmaps_dir, f"{subject}_{image_name}.npy")
         if os.path.exists(crop_file) and os.path.exists(heatmap_out_file):
             print(f'Both {crop_file} and {heatmap_out_file} exists.')
+            counter += 1
             continue
         elif os.path.exists(crop_file):
             print(f'{heatmap_out_file} not found whereas {crop_file} exists')
         elif os.path.exists(heatmap_out_file):
             raise FileNotFoundError(f'{crop_file} not found whereas {heatmap_out_file} exists')
 
-        if not os.path.exists(crop_file):
-            img_path = os.path.join(img_dir, img_path)
-            # test a single image, the resulting box is (x1, y1, x2, y2)
-            mmdet_results = inference_detector(det_model, img_path)
+        img_path = os.path.join(img_dir, img_path)
+        # test a single image, the resulting box is (x1, y1, x2, y2)
+        mmdet_results = inference_detector(det_model, img_path)
 
-            # keep the person class bounding boxes.
-            person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
-            # test a single image, with a list of bboxes.
+        # keep the person class bounding boxes.
+        person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
+        # test a single image, with a list of bboxes.
 
-            confidences = []
-            for i in range(len(person_results)):
-                confidences.append(person_results[i]['bbox'][-1])
+        confidences = []
+        for i in range(len(person_results)):
+            confidences.append(person_results[i]['bbox'][-1])
 
-            bbxes = []
-            person_ids = np.argsort(confidences)[::-1][:2]
-            # Get two best bounding box results and crop around them. Save the crops
-            for i in person_ids:
-                bbxes.append(person_results[i]['bbox'][:-1])
+        bbxes = []
+        person_ids = np.argsort(confidences)[::-1][:2]
+        # Get two best bounding box results and crop around them. Save the crops
+        for i in person_ids:
+            bbxes.append(person_results[i]['bbox'][:-1])
 
-            if len(bbxes) == 1:
-                bbxes.append(bbxes[0])
-            if len(bbxes) == 0:
-                # no detections
-                continue
+        if len(bbxes) == 1:
+            bbxes.append(bbxes[0])
+        if len(bbxes) == 0:
+            # no detections
+            no_detections = pd.DataFrame([[[], [], crop_file, contact_type]], columns=['preds', 'bbxes', 'crop_path', 'contact_type'])
+            if outputs is None:
+                outputs = no_detections
+            else:
+                outputs = pd.concat((outputs, no_detections)).reset_index(drop=True)
+            # outputs.append({'preds': [], 'bbxes': [], 'crop_path': crop_file, 'contact_type': contact_type})
+            continue
 
-            img = Image.open(img_path)
-            img_crop = crop(img, bbxes, [0, 1])
-            os.makedirs(os.path.dirname(crop_file), exist_ok=True)
-            img_crop.save(crop_file)
+        img = Image.open(img_path)
+        img_crop = crop(img, bbxes, [0, 1])
+        os.makedirs(os.path.dirname(crop_file), exist_ok=True)
+        img_crop.save(crop_file)
 
         # Rerun the bounding box detector on the cropped images.
         # test a single image, the resulting box is (x1, y1, x2, y2)
@@ -127,15 +138,18 @@ def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, o
         for r, result in enumerate(pose_results):
             pose_mean_scores.append(result['keypoints'][:, 2].mean())
         ind_to_keep = np.argsort(pose_mean_scores)[::-1][:2]
-        pose_output = {'preds': [], 'bbxes': [], 'crop_path': crop_file, 'contact_type': contact_type}
+        pose_output = pd.DataFrame([[[], [], crop_file, contact_type]], columns=['preds', 'bbxes', 'crop_path', 'contact_type'])
         for r in ind_to_keep:
             result = pose_results[r]
-            pose_output['preds'].append(result['keypoints'])
+            pose_output.loc[0, 'preds'].append(result['keypoints'])
             # x1, y1, x2, y2, score = result['bbox']
-            pose_output['bbxes'].append(result['bbox'])
-        pose_output['preds'] = np.array(pose_output['preds'], dtype=np.float32)
-        pose_output['bbxes'] = np.array(pose_output['bbxes'], dtype=np.float32)
-        outputs.append(pose_output)
+            pose_output.loc[0, 'bbxes'].append(result['bbox'])
+        pose_output.loc[0, 'preds'] = np.array(pose_output.loc[0, 'preds'], dtype=np.float32)
+        pose_output.loc[0, 'bbxes'] = np.array(pose_output.loc[0, 'bbxes'], dtype=np.float32)
+        if outputs is None:
+            outputs = pose_output
+        else:
+            outputs = pd.concat((outputs, pose_output)).reset_index(drop=True)
 
         # show the results
         vis_pose_result(
@@ -157,8 +171,9 @@ def run_mmpose(img_dir, out_dir, annotation_file, det_model, pose_model, args, o
             np.save(heatmap_out_file, np.array([]))
             print(f"returned_outputs has NO element for {image_name}")
         else:
-            print(f"returned_outputs has more than 1 element for {image_name}")
+            raise ValueError(f"returned_outputs has more than 1 element for {image_name}")
 
+    return outputs
 
 def main():
     """Helper code for detecting people in YOUth pci_frames"""
@@ -230,17 +245,28 @@ def main():
     out_path = os.path.join(args.out_dir, "pose_detections.json")
     if os.path.exists(out_path):
         print(f'{out_path} exists, extracting the remaining frames.')
-        outputs = load(out_path)
+        outputs = pd.read_json(out_path)
+        outputs = outputs.replace("test", "all", regex=True)
+        outputs = outputs.replace("_", "/", regex=True)
+        outputs = outputs.drop_duplicates(subset=['crop_path'])
+        contact_labels = pd.read_csv("dataset/YOUth_contact_annotations.csv", index_col=0)
+        missing_frames = defaultdict(list)
+        for index, row in contact_labels.iterrows():
+            crop_path = f"/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all/crops/cam1/{row['subject']}/{row['frame']}"
+            if crop_path not in outputs['crop_path'].unique():
+                print(crop_path)
+                missing_frames[row['subject']].append(crop_path)
+        assert len(missing_frames) == 0, "There are missing frames in the pose_detections.csv!"
     else:
-        outputs = []
+        outputs = None
     for file in os.listdir(os.path.join(args.annotation_dir, args.camera)):
         if file.endswith(".csv"):
             subject = file.split(".")[0]
             img_dir = os.path.join(args.set_dir, subject, args.camera)
             annotation_file = os.path.join(args.annotation_dir, args.camera, file)
-            run_mmpose(img_dir, args.out_dir, annotation_file, det_model, pose_model, args, outputs)
+            outputs = run_mmpose(img_dir, args.out_dir, annotation_file, det_model, pose_model, args, outputs)
     print(f'\nwriting results to {out_path}')
-    dump(outputs, out_path)
+    outputs.to_json(out_path)
 
 if __name__ == '__main__':
     main()

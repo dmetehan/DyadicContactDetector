@@ -8,4 +8,4 @@ STRATIFIED: True  # feeding more touch class (underrepresented) to balance
 LOSS_WEIGHTS: [1, 1]  # keep these the same if stratified is True
 LR: 0.001
 BATCH_SIZE: 8
-EPOCHS: 10
+EPOCHS: 30

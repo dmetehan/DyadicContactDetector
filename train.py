@@ -82,12 +82,15 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
             if (experiment_name in folder_name) and os.path.isdir(os.path.join(exp_dir, folder_name))]
         timestamp = sorted(timestamps)[-1]
         log_dir = f'{exp_dir}/{experiment_name}_{timestamp}/Training vs. Validation Loss_Validation'
-        tag = 'Training vs. Validation Loss'  # Replace with your desired tags
-        best_vloss = find_last_values_tensorboard(log_dir, tag)
+        best_vloss = find_last_values_tensorboard(log_dir, 'Training vs. Validation Loss')
         print("Best validation loss so far:", best_vloss)
+        log_dir = f'{exp_dir}/{experiment_name}_{timestamp}/Training vs. Validation Balanced Accuracy_Validation'
+        best_vacc_blncd = find_last_values_tensorboard(log_dir, 'Training vs. Validation Balanced Accuracy')
+        print("Best validation balanced accuracy so far:", best_vacc_blncd)
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         best_vloss = 1_000_000.
+        best_vacc_blncd = 0.0
     writer = SummaryWriter('{}/{}_{}'.format(exp_dir, experiment_name, timestamp))
 
 
@@ -137,8 +140,15 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
         writer.flush()
 
         # Track the best performance, and save the model's state
-        if avg_vloss < best_vloss:
-            best_vloss = avg_vloss
+        # if avg_vloss < best_vloss:
+        #     best_vloss = avg_vloss
+        #     if vacc_blncd > best_vacc_blncd:
+        #         best_vacc_blncd = vacc_blncd
+        #     model_path = '{}/{}_{}_{}'.format(exp_dir, experiment_name, timestamp, epoch + 1)
+        #     torch.save(model.state_dict(), model_path)
+        #     best_model_path = model_path
+        if vacc_blncd > best_vacc_blncd:
+            best_vacc_blncd = vacc_blncd
             model_path = '{}/{}_{}_{}'.format(exp_dir, experiment_name, timestamp, epoch + 1)
             torch.save(model.state_dict(), model_path)
             best_model_path = model_path

@@ -1,4 +1,8 @@
 import os
+import sys
+sys.path.append("/mnt/hdd1/GithubRepos/ContactClassification")
+os.chdir('/mnt/hdd1/GithubRepos/ContactClassification')
+from collections import defaultdict
 
 import torch
 import numpy as np
@@ -13,12 +17,18 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 from utils import Aug, Options, parse_config
 
+# Splits are generated using dataset/YOUth_split_train_val_test.py
+SET_SPLITS = {'train': ['B48446', 'B56392', 'B00738', 'B00501', 'B43691', 'B64172', 'B44801', 'B75514', 'B58671', 'B75027', 'B55777', 'B48098', 'B42568', 'B78799', 'B33892', 'B51920', 'B37295', 'B40508', 'B00230', 'B51311', 'B00157', 'B00432', 'B35191', 'B82756', 'B64612', 'B36241', 'B61501', 'B51848', 'B35574', 'B00071', 'B80924', 'B49702', 'B80116', 'B60004', 'B75777', 'B59400', 'B83286', 'B71467', 'B72088', 'B33718', 'B40295', 'B41974', 'B77168', 'B81926', 'B47859', 'B41645', 'B69982', 'B39657', 'B61791', 'B35985'],
+              'val': ['B45742', 'B73095', 'B00267', 'B74193', 'B45111', 'B54074', 'B00402', 'B48908', 'B38777', 'B64396', 'B70930', 'B60483', 'B67411', 'B36445', 'B54732', 'B70410', 'B78220', 'B60741', 'B68344', 'B00018'],
+              'test': ['B44040', 'B66340', 'B62722', 'B45358', 'B46724', 'B72504', 'B49249', 'B83755', 'B50284', 'B77974', 'B63936', 'B34489', 'B62594', 'B56066', 'B00836', 'B49427', 'B71725', 'B53434', 'B46237', 'B41317']}
 
 # Images should be cropped around interacting people pairs before using this class.
 class YOUth10mClassification(Dataset):
     def __init__(self, root_dir, camera='cam1', transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224),
-                 augment=(), recalc_heatmaps=False, bodyparts_dir=None, set_split_file=None, _set=None):
-        # TODO: Read set_split_file and based on _set variable read that set ('train', 'val', or 'test)
+                 augment=(), recalc_joint_hmaps=False, bodyparts_dir=None, _set=None):
+        global SET_SPLITS
+        set_subjects = SET_SPLITS[_set]
+        self._set = _set
         self.option = option
         if Aug.crop in augment:
             self.resize = (int(round((1.14285714286 * target_size[0]))),
@@ -34,15 +44,16 @@ class YOUth10mClassification(Dataset):
             self.bodyparts_dir = os.path.join(root_dir, bodyparts_dir)
         os.makedirs(self.gauss_hmaps_dir, exist_ok=True)
         os.makedirs(self.joint_hmaps_dir, exist_ok=True)
+        img_labels = pd.read_csv("dataset/YOUth_contact_annotations.csv", index_col=0)
+        img_labels = img_labels[img_labels['subject'].str.contains('|'.join(set_subjects))]
         labels_dets_file = os.path.join(root_dir, "pose_detections.json")
         img_labels_dets = pd.read_json(labels_dets_file)
-        img_labels_dets = img_labels_dets.replace("test", "all", regex=True)
-        img_labels_dets = img_labels_dets.replace("_", "/", regex=True)
-        self.img_labels_dets = img_labels_dets[img_labels_dets['contact_type'] != 1].reset_index(drop=True)  # remove ambiguous class
+        img_labels_dets = img_labels_dets[img_labels_dets['contact_type'] != 1].reset_index(drop=True)  # remove ambiguous class
+        # filter only _set subjects:
+        self.img_labels_dets = img_labels_dets[img_labels_dets['crop_path'].str.contains('|'.join(set_subjects))].reset_index(drop=True)
+        self.check_labels_dets_matching(img_labels, self.img_labels_dets)
         self.transform = transform
         self.target_transform = target_transform
-        self.train_inds = []#None  # this should be set before reading data from the dataset
-        self.is_test = True if _set == 'train' else False
         self.augment = augment
         self.hflip = transforms.RandomHorizontalFlip(1)  # the probability of flipping is defined in the function
         self.rand_rotate = transforms.RandomRotation(10)
@@ -50,10 +61,20 @@ class YOUth10mClassification(Dataset):
         self.flip_pairs_bodyparts = [[3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14]]
         self.debug_printed = False
         self.color_aug = transforms.Compose([transforms.RandomPhotometricDistort(), transforms.GaussianBlur(3, [0.01, 1.0])])
-        self.recalc_heatmaps = recalc_heatmaps
+        self.recalc_joint_hmaps = recalc_joint_hmaps
 
-    def set_train_inds(self, train_inds):
-        self.train_inds = train_inds
+    @staticmethod
+    def check_labels_dets_matching(img_labels, img_labels_dets):
+        assert len(img_labels[img_labels.duplicated(subset=['subject', 'frame', 'contact_type'])]) == 0, \
+            "DUPLICATES FOUND IN img_labels"
+        missing_frames = defaultdict(list)
+        for index, row in img_labels.iterrows():
+            crop_path = f"/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all/crops/cam1/{row['subject']}/{row['frame']}"
+            if crop_path not in img_labels_dets['crop_path'].unique():
+                print(crop_path)
+                missing_frames[row['subject']].append(crop_path)
+        assert len(missing_frames) == 0, "There are missing frames in the pose_detections.csv!"
+        assert len(img_labels.drop_duplicates(subset=['subject', 'frame'])) == len(img_labels_dets)
 
     def __len__(self):
         return len(self.img_labels_dets)
@@ -81,7 +102,7 @@ class YOUth10mClassification(Dataset):
                 return gauss_hmap_rgb, label
             else:
                 return gauss_hmap, label
-        if not self.recalc_heatmaps:
+        if not self.recalc_joint_hmaps:
             return np.zeros((34 if not rgb else 37, target_size[0], target_size[1]), dtype=np.float32), label
 
         raise NotImplementedError('this method should be updated to match the get_heatmaps method')
@@ -170,50 +191,57 @@ class YOUth10mClassification(Dataset):
         x1, y1, x2, y2 = YOUth10mClassification.bbox_cs2xyxy(hmap_center, hmap_scale)
         return x1, y1, x2, y2
 
-    def get_heatmaps(self, idx, rgb=False, target_size=(224, 224), augment=()):
+    def get_joint_hmaps(self, idx, rgb=False, augment=()):
         crop_path = self.img_labels_dets.loc[idx, "crop_path"]
         subject_frame_path = '_'.join(crop_path.split('/')[-2:])
         label = min(self.img_labels_dets.loc[idx, "contact_type"], 1)
         joint_hmap_path = f'{os.path.join(self.joint_hmaps_dir, subject_frame_path)}.npy'
         if os.path.exists(joint_hmap_path):
-            joint_hmaps = np.load(joint_hmap_path)
-            if len(joint_hmaps) == 0:
-                return np.zeros((34 if not rgb else 37, target_size[0], target_size[1]), dtype=np.float32), label
-            if joint_hmaps.shape[1:] != target_size:
-                # raise NotImplementedError("resizing gauss_hmap (34, 224, 224) not implemented!")
-                heatmaps = np.zeros((34, target_size[0], target_size[1]), dtype=np.float32)
-                for p in range(len(self.img_labels_dets.loc[idx, 'bbxes'])):
-                    for k in range(17):
-                        heatmaps[p*17+k, :, :] = transforms.Resize((target_size[0], target_size[1]))(Image.fromarray(joint_hmaps[p*17+k, :, :]))
-                joint_hmaps = heatmaps
+            joint_hmaps = np.array(np.load(joint_hmap_path), dtype=np.float32)
+            if joint_hmaps.shape[1:] != self.resize:
+                heatmaps = np.zeros((34, self.resize[0], self.resize[1]), dtype=np.float32)
+                if len(self.img_labels_dets.loc[idx, 'bbxes']) > 0:
+                    for p in range(len(self.img_labels_dets.loc[idx, 'bbxes'])):
+                        for k in range(17):
+                            heatmaps[p * 17 + k, :, :] = transforms.Resize((self.resize[0], self.resize[1]))(
+                                Image.fromarray(joint_hmaps[p * 17 + k, :, :]))
+                    joint_hmaps = (heatmaps - np.min(heatmaps)) / (np.max(heatmaps) - np.min(heatmaps))
+                else:
+                    joint_hmaps = np.zeros((34, self.resize[0], self.resize[1]), dtype=np.float32)
+            else:
+                joint_hmaps = (joint_hmaps - np.min(joint_hmaps)) / (np.max(joint_hmaps) - np.min(joint_hmaps))
+
             if rgb:
-                img = Image.open(self.img_labels_dets.loc[idx, "crop_path"])
+                crop = Image.open(crop_path)
                 # noinspection PyTypeChecker
                 joint_hmaps_rgb = np.concatenate((joint_hmaps,
-                                                 np.transpose(np.array(img.resize(target_size)), (2, 0, 1))), axis=0)
+                                                  np.transpose(np.array(crop.resize(self.resize), dtype=np.float32) / 255,
+                                                               (2, 0, 1))), axis=0)
                 return joint_hmaps_rgb, label
             else:
                 return joint_hmaps, label
-        if not self.recalc_heatmaps:
-            return np.zeros((34 if not rgb else 37, target_size[0], target_size[1]), dtype=np.float32), label
+        if not self.recalc_joint_hmaps:
+            return np.zeros((34 if not rgb else 37, self.resize[0], self.resize[1]), dtype=np.float32), label
 
-        img = Image.open(crop_path)
+        crop = Image.open(crop_path)
         heatmap_path = f'{os.path.join(self.heatmaps_dir, subject_frame_path)}.npy'
-        hmap = np.load(heatmap_path)
-        if len(hmap) == 0:
+        if not os.path.exists(heatmap_path):
             # no detections
-            np.save(joint_hmap_path, np.array([]))
-            return np.array([]), label
+            return np.zeros((34 if not rgb else 37, self.resize[0], self.resize[1]), dtype=np.float32), label
+        hmap = np.load(heatmap_path)
         if hmap.shape[0] == 1:
             # only 1 detection
             hmap = np.concatenate(
                 (hmap, np.zeros((1, hmap.shape[1] + (0 if not rgb else 3),
-                                    hmap.shape[2], hmap.shape[3]), dtype=np.float32)))
-        heatmap_size = hmap.shape[3], hmap.shape[2]
-        width, height = img.size
+                                 hmap.shape[2], hmap.shape[3]), dtype=np.float32)))
+        try:
+            heatmap_size = hmap.shape[3], hmap.shape[2]
+        except:
+            print(hmap.shape)
+        width, height = crop.size
         heatmaps = np.zeros((34 if not rgb else 37, height, width), dtype=np.float32)
-        for p in range(len(self.img_labels_dets.loc[idx, 'bbxes'])):
-            x1, y1, x2, y2 = self.img_labels_dets.loc[idx, 'bbxes'][p][:4]
+        for p in range(len(self.img_labels_dets.loc[idx, "bbxes"])):
+            x1, y1, x2, y2 = self.img_labels_dets.loc[idx, "bbxes"][p][:4]
             x1, y1, x2, y2 = self.scale_bbox(x1, y1, x2, y2, heatmap_size)
             x1, y1, x2, y2 = list(map(int, map(round, [x1, y1, x2, y2])))
             w, h = x2 - x1, y2 - y1
@@ -229,8 +257,8 @@ class YOUth10mClassification(Dataset):
             # person_hmaps = np.zeros((34 if not rgb else 37, h, w, 3), dtype=np.float32)
             # person_crop = np.zeros((h, w, 3), dtype=np.float32)
             for k in range(17):
-                heatmaps[p*17+k, y1:y2, x1:x2] = np.array(transforms.Resize((h, w), antialias=True)
-                                                          (Image.fromarray(hmap[p, k, :, :])))[ry1:ry2, rx1:rx2]
+                heatmaps[p * 17 + k, y1:y2, x1:x2] = np.array(transforms.Resize((h, w), antialias=True)
+                                                              (Image.fromarray(hmap[p, k, :, :])))[ry1:ry2, rx1:rx2]
                 # person_hmaps[p*17+k, :, :, p] = np.array(transforms.Resize((h, w), antialias=True)
                 #                                                  (Image.fromarray(heatmap[p, k, :, :])))
             # heatmap_img = Image.fromarray((person_hmaps.max(axis=0)*255).astype(np.uint8))
@@ -257,7 +285,7 @@ class YOUth10mClassification(Dataset):
 
     def get_bodyparts(self, idx):
         part_ids = [0, 13, 18, 24, 21, 20, 11, 8, 12, 6, 2, 16, 5, 25, 22]
-        bodyparts_path = f'{os.path.join(self.bodyparts_dir, "bpl_"+os.path.basename(self.img_labels_dets.loc[idx, "crop_path"]))}'
+        bodyparts_path = f"{os.path.join(self.bodyparts_dir, 'cam1', '/'.join(self.img_labels_dets.loc[idx, 'crop_path'].split('/')[-2:]))}"
         if os.path.exists(bodyparts_path):
             # convert colors into boolean maps per body part channel (+background)
             bodyparts_img = np.asarray(transforms.Resize(self.resize, interpolation=InterpolationMode.NEAREST)(Image.open(bodyparts_path)), dtype=np.uint32)
@@ -283,10 +311,7 @@ class YOUth10mClassification(Dataset):
 
 
     def __getitem__(self, idx):
-        if not self.is_test:
-            augment = self.augment if idx in self.train_inds else ()
-        else:
-            augment = ()
+        augment = self.augment if self._set == 'train' else ()
         if idx >= len(self):
             raise IndexError()
         if self.option == Options.debug:
@@ -299,17 +324,17 @@ class YOUth10mClassification(Dataset):
         elif self.option == Options.gaussian:
             data, label = self.get_gaussians(idx)
         elif self.option == Options.jointmaps:
-            data, label = self.get_heatmaps(idx)
+            data, label = self.get_joint_hmaps(idx)
         elif self.option == Options.gaussian_rgb:
             data, label = self.get_gaussians(idx, rgb=True)
         elif self.option == Options.jointmaps_rgb:
-            data, label = self.get_heatmaps(idx, rgb=True)
+            data, label = self.get_joint_hmaps(idx, rgb=True)
         elif self.option == Options.gaussian_rgb_bodyparts:
             data, label = self.get_gaussians(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
             data = np.vstack((data, bodyparts))
         elif self.option == Options.jointmaps_rgb_bodyparts:
-            data, label = self.get_heatmaps(idx, rgb=True)
+            data, label = self.get_joint_hmaps(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
             data = np.vstack((data, bodyparts))
         else:
@@ -320,18 +345,23 @@ class YOUth10mClassification(Dataset):
 
     def do_augmentations(self, data, augment):
         for aug in augment:
-            if aug == Aug.hflip:
+            if aug == Aug.swap:
+                if np.random.randint(2) == 0:  # 50% chance to swap
+                    data[:17, :, :], data[17:34, :, :] = data[17:34, :, :], data[:17, :, :]
+            elif aug == Aug.hflip:
                 if np.random.randint(2) == 0:  # 50% chance to flip
-                    if len(data) > 34:
-                        data[34:, :, :] = np.transpose(self.hflip(Image.fromarray(np.transpose(data[34:, :, :],
-                                                                                               (1, 2, 0)).astype(np.uint8)
-                                                                                  )),
-                                                       (2, 0, 1))
-                    for i, j in self.flip_pairs:
+                    # swap channels of left/right pairs of pose channels
+                    for i, j in self.flip_pairs_pose:
                         data[i, :, :], data[j, :, :] = data[j, :, :], data[i, :, :]
+                        data[i+17, :, :], data[j+17, :, :] = data[j+17, :, :], data[i+17, :, :]
+                    # swap channels of left/right pairs of body-part channels
+                    if self.option in [Options.gaussian_rgb_bodyparts, Options.jointmaps_rgb_bodyparts]:
+                        for i, j in self.flip_pairs_bodyparts:
+                            data[i+37, :, :], data[j+37, :, :] = data[j+37, :, :], data[i+37, :, :]
+                    data[:, :, :] = data[:, :, ::-1]  # flip everything horizontally
             elif aug == Aug.crop:
-                i = torch.randint(0, self.target_size[0] - self.crop_size[0] + 1, size=(1,)).item()
-                j = torch.randint(0, self.target_size[1] - self.crop_size[1] + 1, size=(1,)).item()
+                i = torch.randint(0, self.resize[0] - self.target_size[0] + 1, size=(1,)).item()
+                j = torch.randint(0, self.resize[1] - self.target_size[1] + 1, size=(1,)).item()
                 data = data[:, i:i+self.target_size[0], j:j+self.target_size[1]]
             # elif aug == Aug.rotate:
             # TODO: Implement random rotation
@@ -346,24 +376,26 @@ class YOUth10mClassification(Dataset):
                     data[34:37, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[34:37, :, :],
                                                                                                  (1, 2, 0)).astype(np.uint8))),
                                                      (2, 0, 1)).astype(np.float32) / 255
-                    # rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :], (1, 2, 0)).astype(np.uint8))
-                    # plt.imshow(rgb)
-                    # plt.show()
-
-def init_datasets_with_cfg_dict(train_dir, test_dir, config_dict):
-    return init_datasets(train_dir, test_dir, config_dict["BATCH_SIZE"], option=config_dict["OPTION"], val_split=0.2,
-                         target_size=config_dict["TARGET_SIZE"], num_workers=8,
-                         augment=config_dict["AUGMENTATIONS"], bodyparts_dir=config_dict["BODYPARTS_DIR"], stratified=config_dict["STRATIFIED"])
 
 
-def init_datasets(root_dir, dummy_dir, batch_size, option=1, val_split=0.2, target_size=(256, 256), crop_size=(224, 224),
-                  num_workers=2, augment=(), bodyparts_dir=None, stratified=True, set_split_file='set_splits.csv'):
-    train_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, crop_size=crop_size, augment=augment, bodyparts_dir=bodyparts_dir,
-                                           set_split_file=set_split_file, _set='train')
-    val_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, crop_size=crop_size, augment=augment, bodyparts_dir=bodyparts_dir,
-                                         set_split_file=set_split_file, _set='val')
-    test_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, crop_size=crop_size, augment=augment, bodyparts_dir=bodyparts_dir,
-                                          set_split_file=set_split_file, _set='test')
+def init_datasets_with_cfg(root_dir, _, cfg):
+    return init_datasets(root_dir, root_dir, cfg.BATCH_SIZE, option=cfg.OPTION,
+                         target_size=cfg.TARGET_SIZE, num_workers=8,
+                         augment=cfg.AUGMENTATIONS, bodyparts_dir=cfg.BODYPARTS_DIR)
+
+def init_datasets_with_cfg_dict(root_dir, _, config_dict):
+    return init_datasets(root_dir, root_dir, config_dict["BATCH_SIZE"], option=config_dict["OPTION"],
+                         target_size=config_dict["TARGET_SIZE"], num_workers=8, augment=config_dict["AUGMENTATIONS"],
+                         bodyparts_dir=config_dict["BODYPARTS_DIR"], )
+
+
+def init_datasets(root_dir, _, batch_size, option=Options.jointmaps, target_size=(224, 224), num_workers=2, augment=(), bodyparts_dir=None):
+    train_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, augment=augment,
+                                           bodyparts_dir=bodyparts_dir, _set='train')
+    val_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, augment=augment,
+                                         bodyparts_dir=bodyparts_dir, _set='val')
+    test_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, augment=augment,
+                                          bodyparts_dir=bodyparts_dir, _set='test')
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     validation_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
@@ -374,7 +406,8 @@ def init_datasets(root_dir, dummy_dir, batch_size, option=1, val_split=0.2, targ
 def test_class():
     option = Options.jointmaps_rgb_bodyparts
     root_dir = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
-    train_loader, validation_loader, test_loader = init_datasets(root_dir, root_dir, batch_size=1, option=option, num_workers=1)
+    train_loader, validation_loader, test_loader = init_datasets(root_dir, root_dir, batch_size=1, option=option,
+                                                                 num_workers=1, bodyparts_dir='bodyparts_binary')
     # print(len(train_loader))
     dataiter = iter(train_loader)
     # for heatmap, label in dataiter:
@@ -388,19 +421,20 @@ def test_class():
     #     continue
 
 
-def test_get_heatmaps():
+def test_get_joint_hmaps():
     option = Options.jointmaps
     root_dir = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
-    dataset = YOUth10mClassification(root_dir, option=option, recalc_heatmaps=True)
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=1)
-    dataiter = iter(data_loader)
-    count = 0
-    for idx, data, label in dataiter:
-        count += len(label)
-        if count % 100 == 0:
-            print(count)
+    for _set in ['train', 'val', 'test']:
+        dataset = YOUth10mClassification(root_dir, option=option, recalc_joint_hmaps=True, _set=_set)
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=1)
+        dataiter = iter(data_loader)
+        count = 0
+        for idx, data, label in dataiter:
+            count += len(label)
+            if count % 100 == 0:
+                print(count)
 
 
 if __name__ == '__main__':
     # test_class()
-    test_get_heatmaps()
+    test_get_joint_hmaps()

@@ -23,9 +23,9 @@ from dataset.YOUth10mClassification import init_datasets_with_cfg
 
 classes = ("no touch", "touch")
 
-def test_model(model, experiment_name, cfg, data_loader, args):
+def test_model(model, exp_name, cfg, data_loader, args):
     models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(args.exp_dir))
-                          if (experiment_name in file_name) and os.path.isfile(os.path.join(args.exp_dir, file_name))]
+              if (exp_name in file_name) and os.path.isfile(os.path.join(args.exp_dir, file_name))]
     models.sort(key=lambda x: x[1])
     model_name = models[-1][0]
     model.load_state_dict(torch.load(f"{args.exp_dir}/{model_name}"))
@@ -58,7 +58,7 @@ def test_model(model, experiment_name, cfg, data_loader, args):
     print(f'Balanced accuracy of the network on the test images ({len(y_true)}): {acc_blncd:.4f}')
     print(f'F1 Score of the network on the test images ({len(y_true)}): {f1:.4f}')
 
-    dir_name = [file_name for file_name in sorted(os.listdir(args.exp_dir)) if experiment_name in file_name and os.path.isdir(f'{args.exp_dir}/{file_name}')][-1]
+    dir_name = [file_name for file_name in sorted(os.listdir(args.exp_dir)) if exp_name in file_name and os.path.isdir(f'{args.exp_dir}/{file_name}')][-1]
     cf_matrix_norm = confusion_matrix(y_true, y_pred, normalize='true')
     df_cm = pd.DataFrame(cf_matrix_norm, index=[i for i in classes],
                          columns=[i for i in classes])
@@ -81,16 +81,22 @@ def main():
     parser.add_argument('config_file', help='config file')
     parser.add_argument('exp_dir', help='experiment directory')
     parser.add_argument('--test_set', action='store_true', default=False, help='False: validation set, True: test set')
+    parser.add_argument('--finetune', action='store_true', default=False, help='False: no finetuning'
+                                                                               'True: finetune on YOUth')
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
     root_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
     model, _, _ = initialize_model(cfg, device)
-    experiment_name = get_experiment_name(cfg)
+    if args.finetune:
+        cfg.LR = cfg.LR / 10
+    exp_name = get_experiment_name(cfg)
+    if args.finetune:
+        exp_name = f'finetune_{exp_name}'
     cfg.BATCH_SIZE = 2 # to get accurate results
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(root_dir_ssd, root_dir_ssd, cfg)
-    test_model(model, experiment_name, cfg, test_loader if args.test_set else validation_loader, args)
+    test_model(model, exp_name, cfg, test_loader if args.test_set else validation_loader, args)
 
 
 if __name__ == '__main__':

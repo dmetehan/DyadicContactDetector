@@ -161,25 +161,40 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
 def main():
     parser = ArgumentParser()
     parser.add_argument('config_file', help='config file')
+    parser.add_argument('exp_dir', help='experiment directory')
     parser.add_argument('--resume', action='store_true', default=False, help='False: start from scratch, '
                                                                                'True: continue the last experiment')
-    exp_dir = "YOUth_experiments"
-    os.makedirs(exp_dir, exist_ok=True)
+    parser.add_argument('--finetune', action='store_true', default=False, help='False: no finetuning'
+                                                                               'True: finetune on YOUth')
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
-
+    exp_dir = args.exp_dir
+    os.makedirs(exp_dir, exist_ok=True)
+    assert args.finetune and "YOUth" in args.exp_dir or not args.finetune
+    model_experiment_name = get_experiment_name(cfg)
+    if args.finetune:
+        model_exp_dir = "experiments"
+        cfg.LR = cfg.LR / 10
+    else:
+        model_exp_dir = args.exp_dir
     root_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
     model, optimizer, loss_fn = initialize_model(cfg, device)
     experiment_name = get_experiment_name(cfg)
     start_epoch = 0
-    if args.resume:
-        models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(exp_dir))
-                              if (experiment_name in file_name) and os.path.isfile(os.path.join(exp_dir, file_name))]
+    if args.resume or args.finetune:
+        models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(model_exp_dir))
+                              if (model_experiment_name in file_name) and os.path.isfile(os.path.join(model_exp_dir, file_name))]
         models.sort(key=lambda x: x[1])
         model_name, start_epoch = models[-1]
-        model.load_state_dict(torch.load(f"{exp_dir}/{model_name}"))
+        model.load_state_dict(torch.load(f"{model_exp_dir}/{model_name}"))
+        if not args.resume:
+            start_epoch = 0
+        if args.finetune:
+            experiment_name = f'finetune_{experiment_name}'
+            print("Experiment name:")
+            print(experiment_name)
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(root_dir_ssd, root_dir_ssd, cfg)
     best_model_path = train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, validation_loader,
                                   exp_dir=exp_dir, start_epoch=start_epoch, resume=args.resume)

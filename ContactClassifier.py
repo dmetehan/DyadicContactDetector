@@ -10,10 +10,28 @@ class ContactClassifier(nn.Module):
 		super(ContactClassifier, self).__init__()
 		resnet50 = torch.hub.load("pytorch/vision", backbone, weights=weights)
 		conv1_pretrained = list(resnet50.children())[0]
-		self.conv1 = nn.Conv2d(34 if option in [Options.gaussian, Options.jointmaps] else
-							   (37 if option in [Options.gaussian_rgb, Options.jointmaps_rgb] else 52), 64, kernel_size=7, stride=2, padding=3, bias=False)
-		if copy_rgb_weights and self.conv1.weight.shape[1] >= 37:
-			self.conv1.weight.data[:, 34:37, :, :] = conv1_pretrained.weight  # copies the weights to the rgb channels
+		# TODO: ADJUST IT FOR Options.rgb
+		if option == Options.rgb:
+			self.conv1 = conv1_pretrained
+		else:
+			if option in [Options.gaussian, Options.jointmaps]:
+				self.conv1 = nn.Conv2d(34, 64, kernel_size=7, stride=2, padding=3, bias=False)
+			elif option in [Options.gaussian_rgb, Options.jointmaps_rgb]:
+				self.conv1 = nn.Conv2d(37, 64, kernel_size=7, stride=2, padding=3, bias=False)
+			elif option in [Options.gaussian_rgb_bodyparts, Options.jointmaps_rgb_bodyparts]:
+				self.conv1 = nn.Conv2d(52, 64, kernel_size=7, stride=2, padding=3, bias=False)
+			elif option in [Options.bodyparts]:
+				self.conv1 = nn.Conv2d(15, 64, kernel_size=7, stride=2, padding=3, bias=False)
+			elif option in [Options.rgb_bodyparts]:
+				self.conv1 = nn.Conv2d(18, 64, kernel_size=7, stride=2, padding=3, bias=False)
+			elif option in [Options.jointmaps_bodyparts]:
+				self.conv1 = nn.Conv2d(49, 64, kernel_size=7, stride=2, padding=3, bias=False)
+		if copy_rgb_weights:
+			if option in [Options.gaussian_rgb, Options.jointmaps_rgb,
+						  Options.jointmaps_rgb_bodyparts, Options.gaussian_rgb_bodyparts]:
+				self.conv1.weight.data[:, 34:37, :, :] = conv1_pretrained.weight  # copies the weights to the rgb channels
+			elif option in [Options.rgb, Options.rgb_bodyparts]:
+				self.conv1.weight.data[:, :3, :, :] = conv1_pretrained.weight  # copies the weights to the rgb channels
 		# 	with torch.no_grad():  # seems like the weights do not train that much.
 		# 		self.conv1.weight[:, 34:37, :, :].copy_(conv1_pretrained.weight)
 		modules = list(resnet50.children())[1:-1]

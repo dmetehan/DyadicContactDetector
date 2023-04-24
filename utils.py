@@ -18,15 +18,19 @@ class Aug:
 
 class Options:
     debug = "debug"
+    rgb = "rgb"
+    bodyparts = "bodyparts"
     gaussian = "gaussian"  # gaussian heatmaps around detected keypoints
     jointmaps = "jointmaps"  # detected heatmaps mapped onto cropped image around interacting people
     gaussian_rgb = "gaussian_rgb"
     jointmaps_rgb = "jointmaps_rgb"
+    rgb_bodyparts = "rgb_bodyparts"
+    jointmaps_bodyparts = "jointmaps_bodyparts"
     gaussian_rgb_bodyparts = "gaussian_rgb_bodyparts"
     jointmaps_rgb_bodyparts = "jointmaps_rgb_bodyparts"
-    all = {"debug": debug, "gaussian": gaussian, "jointmaps": jointmaps, "gaussian_rgb": gaussian_rgb,
-           "jointmaps_rgb": jointmaps_rgb, "gaussian_rgb_bodyparts": gaussian_rgb_bodyparts,
-           "jointmaps_rgb_bodyparts": jointmaps_rgb_bodyparts}
+    all = {"debug": debug, "rgb": rgb, "bodyparts": bodyparts, "gaussian": gaussian, "jointmaps": jointmaps, "gaussian_rgb": gaussian_rgb,
+           "jointmaps_rgb": jointmaps_rgb, "rgb_bodyparts": rgb_bodyparts, "jointmaps_bodyparts": jointmaps_bodyparts,
+           "gaussian_rgb_bodyparts": gaussian_rgb_bodyparts, "jointmaps_rgb_bodyparts": jointmaps_rgb_bodyparts}
 
 
 def check_config(cfg):

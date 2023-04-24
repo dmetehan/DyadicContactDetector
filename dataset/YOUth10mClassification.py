@@ -79,6 +79,15 @@ class YOUth10mClassification(Dataset):
     def __len__(self):
         return len(self.img_labels_dets)
 
+    def get_rgb(self, idx):
+        crop_path = self.img_labels_dets.loc[idx, "crop_path"]
+        label = min(self.img_labels_dets.loc[idx, "contact_type"], 1)
+        crop = Image.open(crop_path)
+        # noinspection PyTypeChecker
+        rgb = np.transpose(np.array(crop.resize(self.resize), dtype=np.float32) / 255, (2, 0, 1))
+        return rgb, label
+
+
     def get_gaussians(self, idx, rgb=False, target_size=(224, 224), augment=()):
         label = self.img_labels_dets.loc[idx, "contact_type"]
         label = min(label, 1)
@@ -191,7 +200,7 @@ class YOUth10mClassification(Dataset):
         x1, y1, x2, y2 = YOUth10mClassification.bbox_cs2xyxy(hmap_center, hmap_scale)
         return x1, y1, x2, y2
 
-    def get_joint_hmaps(self, idx, rgb=False, augment=()):
+    def get_joint_hmaps(self, idx, rgb=False):
         crop_path = self.img_labels_dets.loc[idx, "crop_path"]
         subject_frame_path = '_'.join(crop_path.split('/')[-2:])
         label = min(self.img_labels_dets.loc[idx, "contact_type"], 1)
@@ -321,10 +330,15 @@ class YOUth10mClassification(Dataset):
                 self.debug_printed = True
             data = np.zeros((52, self.resize[0], self.resize[1]), dtype=np.float32)
             label = self.img_labels_dets.loc[idx, "contact_type"]
+        elif self.option == Options.rgb:
+            data, label = self.get_rgb(idx)
         elif self.option == Options.gaussian:
             data, label = self.get_gaussians(idx)
         elif self.option == Options.jointmaps:
             data, label = self.get_joint_hmaps(idx)
+        elif self.option == Options.bodyparts:
+            label = min(self.img_labels_dets.loc[idx, "contact_type"], 1)
+            data = self.get_bodyparts(idx)
         elif self.option == Options.gaussian_rgb:
             data, label = self.get_gaussians(idx, rgb=True)
         elif self.option == Options.jointmaps_rgb:
@@ -337,6 +351,14 @@ class YOUth10mClassification(Dataset):
             data, label = self.get_joint_hmaps(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
             data = np.vstack((data, bodyparts))
+        elif self.option == Options.rgb_bodyparts:
+            data, label = self.get_rgb(idx)
+            bodyparts = self.get_bodyparts(idx)
+            data = np.vstack((data, bodyparts))
+        elif self.option == Options.jointmaps_bodyparts:
+            data, label = self.get_joint_hmaps(idx, rgb=False)
+            bodyparts = self.get_bodyparts(idx)
+            data = np.vstack((data, bodyparts))
         else:
             raise NotImplementedError()
 
@@ -346,18 +368,31 @@ class YOUth10mClassification(Dataset):
     def do_augmentations(self, data, augment):
         for aug in augment:
             if aug == Aug.swap:
-                if np.random.randint(2) == 0:  # 50% chance to swap
-                    data[:17, :, :], data[17:34, :, :] = data[17:34, :, :], data[:17, :, :]
+                if self.option in [Options.gaussian_rgb, Options.jointmaps_rgb, Options.jointmaps, Options.gaussian,
+                                   Options.jointmaps_rgb_bodyparts, Options.gaussian_rgb_bodyparts, Options.jointmaps_bodyparts]:
+                    if np.random.randint(2) == 0:  # 50% chance to swap
+                        data[:17, :, :], data[17:34, :, :] = data[17:34, :, :], data[:17, :, :]
             elif aug == Aug.hflip:
                 if np.random.randint(2) == 0:  # 50% chance to flip
                     # swap channels of left/right pairs of pose channels
-                    for i, j in self.flip_pairs_pose:
-                        data[i, :, :], data[j, :, :] = data[j, :, :], data[i, :, :]
-                        data[i+17, :, :], data[j+17, :, :] = data[j+17, :, :], data[i+17, :, :]
+                    if self.option in [Options.gaussian_rgb, Options.jointmaps_rgb, Options.jointmaps, Options.gaussian,
+                                       Options.jointmaps_rgb_bodyparts, Options.gaussian_rgb_bodyparts, Options.jointmaps_bodyparts]:
+                        for i, j in self.flip_pairs_pose:
+                            data[i, :, :], data[j, :, :] = data[j, :, :], data[i, :, :]
+                            data[i+17, :, :], data[j+17, :, :] = data[j+17, :, :], data[i+17, :, :]
                     # swap channels of left/right pairs of body-part channels
                     if self.option in [Options.gaussian_rgb_bodyparts, Options.jointmaps_rgb_bodyparts]:
                         for i, j in self.flip_pairs_bodyparts:
                             data[i+37, :, :], data[j+37, :, :] = data[j+37, :, :], data[i+37, :, :]
+                    elif self.option in [Options.rgb_bodyparts]:
+                        for i, j in self.flip_pairs_bodyparts:
+                            data[i+3, :, :], data[j+3, :, :] = data[j+3, :, :], data[i+3, :, :]
+                    elif self.option in [Options.jointmaps_bodyparts]:
+                        for i, j in self.flip_pairs_bodyparts:
+                            data[i+34, :, :], data[j+34, :, :] = data[j+34, :, :], data[i+34, :, :]
+                    elif self.option in [Options.bodyparts]:
+                        for i, j in self.flip_pairs_bodyparts:
+                            data[i, :, :], data[j, :, :] = data[j, :, :], data[i, :, :]
                     data[:, :, :] = data[:, :, ::-1]  # flip everything horizontally
             elif aug == Aug.crop:
                 i = torch.randint(0, self.resize[0] - self.target_size[0] + 1, size=(1,)).item()
@@ -376,6 +411,10 @@ class YOUth10mClassification(Dataset):
                     data[34:37, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[34:37, :, :],
                                                                                                  (1, 2, 0)).astype(np.uint8))),
                                                      (2, 0, 1)).astype(np.float32) / 255
+                elif self.option in [Options.rgb, Options.rgb_bodyparts]:
+                    data[:3, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[:3, :, :],
+                                                                                              (1, 2, 0)).astype(np.uint8))),
+                                                  (2, 0, 1)).astype(np.float32) / 255
 
 
 def init_datasets_with_cfg(root_dir, _, cfg):

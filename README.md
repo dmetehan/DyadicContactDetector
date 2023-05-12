@@ -1,5 +1,13 @@
 # ContactClassification
 
+# Requirements:
+* mmpose (git submodule update --init --recursive)
+* 
+
+# Installation:
+
+
+
 1. Crop images around interacting people:<br>
 <code>python prep_crops.py '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification'</code>
 2. Create a new environment to run mmdet and mmpose on the crops:<br>

@@ -40,7 +40,7 @@ for name, dataset in [('train', dataset_train), ('val', dataset_val), ('test', d
 #     for pred in person_preds:
 #         cv2.circle(crop, (int(pred[0]), int(pred[1])), 3, colors[p], 1)
 
-with open("../all_distances.json", "w") as fp:
+with open("../results/all_distances.json", "w") as fp:
     json.dump(all_distances, fp)
 
 counts, bins = np.histogram(all_distances['train'])

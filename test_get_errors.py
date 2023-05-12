@@ -99,7 +99,7 @@ def main():
     train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
     test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
     exp_name = get_experiment_name(cfg)
-    exp_dir = "experiments"
+    exp_dir = "exp/Flickr"
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir_ssd, test_dir_ssd, cfg)
     cfg.BATCH_SIZE = 1  # for accurate results
     model, _, _ = initialize_model(cfg, device)

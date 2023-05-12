@@ -179,7 +179,7 @@ def main():
     assert args.finetune and "YOUth" in args.exp_dir or not args.finetune
     model_experiment_name = get_experiment_name(cfg)
     if args.finetune:
-        model_exp_dir = "experiments"
+        model_exp_dir = "exp/Flickr"
         cfg.LR = cfg.LR / 5
     else:
         model_exp_dir = args.exp_dir

@@ -67,8 +67,8 @@ def prep(set_dir):
 
 
 if __name__ == '__main__':
-    # root_dir should include train and test folders for FlickrCI3D Classification dataset.
-    # root_dir = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification'
+    # root_dir should include train and test folders for Flickr Classification dataset.
+    # root_dir = '/mnt/hdd1/Datasets/CI3D/Flickr Classification'
     root_dir = sys.argv[1]
     prep(os.path.join(root_dir, 'test'))
     prep(os.path.join(root_dir, 'train'))

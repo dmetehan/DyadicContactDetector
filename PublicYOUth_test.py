@@ -87,8 +87,8 @@ def main():
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
     root_dir = '/mnt/hdd1/Datasets/YentlPublic'
-    # model_path = "YOUth_experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.001_b64_20230421_004452_2"
-    model_path = "YOUth_ablations/a15_jointmaps_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.001_b64_20230424_153247_9"
+    # model_path = "main/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.001_b64_20230421_004452_2"
+    model_path = "exp/Ablation/a15_jointmaps_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.001_b64_20230424_153247_9"
     model, _, _ = initialize_model(cfg, device)
     cfg.BATCH_SIZE = 1 # to get accurate results
     test_loader = init_datasets_with_cfg(root_dir, root_dir, cfg)

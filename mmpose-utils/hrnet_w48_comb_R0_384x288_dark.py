@@ -156,7 +156,7 @@ val_pipeline = [
 
 test_pipeline = val_pipeline
 
-data_root = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification'
+data_root = '/mnt/hdd1/Datasets/CI3D/Flickr Classification'
 data = dict(
     samples_per_gpu=16,
     workers_per_gpu=2,

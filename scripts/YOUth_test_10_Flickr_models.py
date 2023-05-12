@@ -91,14 +91,15 @@ def main():
         exp_name = f'finetune_{exp_name}'
     cfg.BATCH_SIZE = 1 # to get accurate results
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(root_dir_ssd, root_dir_ssd, cfg)
-    best_model_paths = ["experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.001_b64_20230505_151102_9", "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230505_182711_5", 
-     "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230505_211912_4", "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230506_000707_7",
-     "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_025316_5", "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_050156_4",
-     "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_070944_3", "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_091936_5", "experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_114032_6"]
+    best_model_paths = ["Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.001_b64_20230505_151102_9", "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230505_182711_5",
+     "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230505_211912_4", "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230506_000707_7",
+     "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_025316_5", "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_050156_4",
+     "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_070944_3", "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_091936_5", "Flickr/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_114032_6"]
     accs, accs_blncd, f1_scores = [], [], []
     for model_path in best_model_paths:
         model.load_state_dict(torch.load(model_path))
-        acc, acc_blncd, f1 = test_model(model, model_path.split('/')[-1], '_'.join(model_path.split('/')[-1].split('_')[:-1]), "experiments", test_loader, True, device)
+        acc, acc_blncd, f1 = test_model(model, model_path.split('/')[-1], '_'.join(model_path.split('/')[-1].split('_')[:-1]),
+                                        "../exp/Flickr", test_loader, True, device)
         accs.append(float(acc))
         accs_blncd.append(float(acc_blncd))
         f1_scores.append(float(f1))

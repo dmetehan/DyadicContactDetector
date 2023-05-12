@@ -91,7 +91,7 @@ def train_one_epoch(model, optimizer, loss_fn, train_loader, epoch_index, tb_wri
 
 
 def train_model(model, optimizer, scheduler, loss_fn_train, experiment_name, cfg, train_loader, validation_loader,
-                exp_dir="experiments", start_epoch=0, resume=False):
+                exp_dir="Flickr", start_epoch=0, resume=False):
     loss_fn_valid = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, 3.35]).to(device))
     early_stopping = EarlyStopping(tolerance=5, min_delta=10)
     best_model_path = ''
@@ -188,14 +188,14 @@ def main():
                                                                            'True: testing on the test set at the end')
     parser.add_argument('--log_test_results', action='store_true', default=False, help='False: no logging'
                                                                                        'True: logging test results')
-    exp_dir = "experiments"
+    exp_dir = "exp/Flickr"
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
 
-    train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification/train'
-    test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification/test'
+    train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/Flickr-Classification/train'
+    test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/Flickr-Classification/test'
     # train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
     # test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
     model, optimizer, loss_fn = initialize_model(cfg, device)

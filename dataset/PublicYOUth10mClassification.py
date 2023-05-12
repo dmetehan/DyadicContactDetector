@@ -1,5 +1,8 @@
 import os
 import sys
+
+import cv2
+
 sys.path.append("/mnt/hdd1/GithubRepos/ContactClassification")
 os.chdir('/mnt/hdd1/GithubRepos/ContactClassification')
 from collections import defaultdict
@@ -22,7 +25,6 @@ from utils import Aug, Options, parse_config
 class PublicYOUth10mClassification(Dataset):
 
     def __init__(self, root_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224), recalc_joint_hmaps=False, bodyparts_dir=None, _set='test'):
-        global SET_SPLITS
         self._set = _set
         self.option = option
         self.resize = target_size
@@ -233,6 +235,10 @@ class PublicYOUth10mClassification(Dataset):
             data, label = self.get_joint_hmaps(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
             data = np.vstack((data, bodyparts))
+        elif self.option == Options.jointmaps_bodyparts:
+            data, label = self.get_joint_hmaps(idx, rgb=False)
+            bodyparts = self.get_bodyparts(idx)
+            data = np.vstack((data, bodyparts))
         else:
             raise NotImplementedError()
 
@@ -240,8 +246,7 @@ class PublicYOUth10mClassification(Dataset):
 
 def init_datasets_with_cfg(root_dir, _, cfg):
     return init_datasets(root_dir, root_dir, cfg.BATCH_SIZE, option=cfg.OPTION,
-                         target_size=cfg.TARGET_SIZE, num_workers=8,
-                         augment=cfg.AUGMENTATIONS, bodyparts_dir=cfg.BODYPARTS_DIR)
+                         target_size=cfg.TARGET_SIZE, num_workers=8, bodyparts_dir=cfg.BODYPARTS_DIR)
 
 def init_datasets_with_cfg_dict(root_dir, _, config_dict):
     return init_datasets(root_dir, root_dir, config_dict["BATCH_SIZE"], option=config_dict["OPTION"],
@@ -261,8 +266,14 @@ def get_predictions():
     test_loader = init_datasets(root_dir, root_dir, batch_size=1, option=option, num_workers=1, bodyparts_dir='bodyparts_binary')
     print(len(test_loader))
     dataiter = iter(test_loader)
+    count = 0
+    for idx, data, label in dataiter:
+        count += len(label)
+        if count % 100 == 0:
+            print(count)
 
-def test_get_joint_hmaps():
+
+def get_joint_hmaps():
     option = Options.jointmaps
     root_dir = '/mnt/hdd1/Datasets/YentlPublic'
     dataset = PublicYOUth10mClassification(root_dir, option=option, recalc_joint_hmaps=True)
@@ -274,7 +285,41 @@ def test_get_joint_hmaps():
         if count % 100 == 0:
             print(count)
 
+def get_visuals():
+    option = Options.jointmaps_rgb_bodyparts
+    root_dir = '/mnt/hdd1/Datasets/YentlPublic'
+    dataset = PublicYOUth10mClassification(root_dir, option=option, bodyparts_dir='bodyparts_binary')
+    idx = 459
+    print(dataset.img_labels_dets.iloc[idx])
+    joint_hmaps_rgb = dataset.get_joint_hmaps(idx, rgb=True)[0]
+    bodyparts = dataset.get_bodyparts(idx)
+    joint_hmaps, rgb = joint_hmaps_rgb[:34, :, :], joint_hmaps_rgb[34:, :, :]
+    print(f"Joint Heatmaps: {joint_hmaps.shape}, rgb: {rgb.shape}, bodyparts: {bodyparts.shape}")
+    out_dir = os.path.join(root_dir, "teaser")
+    os.makedirs(out_dir, exist_ok=True)
+    for i in range(34):
+        heatmap = (joint_hmaps[i, :, :] * 255).astype(np.uint8)
+        heatmap_img = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+        cv2.imwrite(os.path.join(out_dir, f"joint_hmap_{i}.jpg"), heatmap_img)
+
+    for i in range(15):
+        heatmap = (bodyparts[i, :, :] * 255).astype(np.uint8)
+        heatmap_img = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+        cv2.imwrite(os.path.join(out_dir, f"bodyparts_hmap_{i}.jpg"), heatmap_img)
+
+    crop = (np.transpose(rgb, (1, 2, 0)) * 255).astype(np.uint8)
+    crop = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(os.path.join(out_dir, "crop.jpg"), crop)
+    # cv2.imshow('frame', crop)
+    # cv2.waitKey()
+
+    # for idx, data, label in dataiter:
+    #     if "1500.jpg" in dataset.img_labels_dets.loc[idx.item(), "crop_path"]:
+    #         print(idx, data.shape, dataset.img_labels_dets.loc[idx.item(), "crop_path"])
+
+
 
 if __name__ == '__main__':
-    get_predictions()
-    # test_get_joint_hmaps()
+    # get_predictions()
+    # get_joint_hmaps()
+    get_visuals()

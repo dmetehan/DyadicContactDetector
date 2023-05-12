@@ -21,17 +21,12 @@ _ = ContactClassifier()
 
 from dataset.YOUth10mClassification import init_datasets_with_cfg
 
-classes = ("no touch", "touch")
+CLASSES = ("no touch", "touch")
 
-def test_model(model, exp_name, cfg, data_loader, args):
-    models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(args.exp_dir))
-              if (exp_name in file_name) and os.path.isfile(os.path.join(args.exp_dir, file_name))]
-    models.sort(key=lambda x: x[1])
-    model_name = models[-1][0]
-    model.load_state_dict(torch.load(f"{args.exp_dir}/{model_name}"))
+def test_model(model, model_name, exp_name, exp_dir, data_loader, test_set, device):
     model.eval()
     model = model.to(device)
-    print(f'Testing on {"test set" if args.test_set else "validation set"} using {model_name}')
+    print(f'Testing on {"test set" if test_set else "validation set"} using {model_name}')
     y_pred = []
     y_true = []
     # since we're not training, we don't need to calculate the gradients for our outputs
@@ -58,22 +53,32 @@ def test_model(model, exp_name, cfg, data_loader, args):
     print(f'Balanced accuracy of the network on the test images ({len(y_true)}): {acc_blncd:.4f}')
     print(f'F1 Score of the network on the test images ({len(y_true)}): {f1:.4f}')
 
-    dir_name = [file_name for file_name in sorted(os.listdir(args.exp_dir)) if exp_name in file_name and os.path.isdir(f'{args.exp_dir}/{file_name}')][-1]
+    dir_name = [file_name for file_name in sorted(os.listdir(exp_dir)) if exp_name in file_name and os.path.isdir(f'{exp_dir}/{file_name}')][-1]
     cf_matrix_norm = confusion_matrix(y_true, y_pred, normalize='true')
-    df_cm = pd.DataFrame(cf_matrix_norm, index=[i for i in classes],
-                         columns=[i for i in classes])
+    df_cm = pd.DataFrame(cf_matrix_norm, index=[i for i in CLASSES],
+                         columns=[i for i in CLASSES])
     plt.figure(figsize=(12, 7))
     sn.heatmap(df_cm, annot=True, cmap='Blues')
-    plt.savefig(f'{args.exp_dir}/{dir_name}/{"TEST" if args.test_set else "VAL"}_YOUth'
+    plt.savefig(f'{exp_dir}/{dir_name}/{"TEST" if test_set else "VAL"}_YOUth'
                 f'_acc{100*acc:.2f}_accblncd{100*acc_blncd:.2f}_f1{100*f1:.2f}_norm.png')
 
     cf_matrix = confusion_matrix(y_true, y_pred, normalize=None)
-    df_cm = pd.DataFrame(cf_matrix, index=[i for i in classes],
-                         columns=[i for i in classes])
+    df_cm = pd.DataFrame(cf_matrix, index=[i for i in CLASSES],
+                         columns=[i for i in CLASSES])
     plt.figure(figsize=(12, 7))
     sn.heatmap(df_cm, annot=True, cmap='Blues', fmt='d')
-    plt.savefig(f'{args.exp_dir}/{dir_name}/{"TEST" if args.test_set else "VAL"}_YOUth'
+    plt.savefig(f'{exp_dir}/{dir_name}/{"TEST" if test_set else "VAL"}_YOUth'
                 f'_acc{100*acc:.2f}_accblncd{100*acc_blncd:.2f}_f1{100*f1:.2f}.png')
+    return f'{100*acc:.2f}', f'{100*acc_blncd:.2f}', f'{100*f1:.2f}'
+
+
+def load_model_weights(model, exp_dir, exp_name):
+    models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(exp_dir))
+              if (exp_name in file_name) and os.path.isfile(os.path.join(exp_dir, file_name))]
+    models.sort(key=lambda x: x[1])
+    model_name = models[-1][0]
+    model.load_state_dict(torch.load(f"{exp_dir}/{model_name}"))
+    return model_name
 
 
 def main():
@@ -94,9 +99,11 @@ def main():
     exp_name = get_experiment_name(cfg)
     if args.finetune:
         exp_name = f'finetune_{exp_name}'
-    cfg.BATCH_SIZE = 2 # to get accurate results
+    cfg.BATCH_SIZE = 1 # to get accurate results
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(root_dir_ssd, root_dir_ssd, cfg)
-    test_model(model, exp_name, cfg, test_loader if args.test_set else validation_loader, args)
+    model_name = load_model_weights(model, args.exp_dir, exp_name)
+    test_model(model, model_name, exp_name, args.exp_dir, test_loader if args.test_set else validation_loader,
+               args.test_set, device)
 
 
 if __name__ == '__main__':

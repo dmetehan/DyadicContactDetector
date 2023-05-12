@@ -166,6 +166,10 @@ def main():
                                                                                'True: continue the last experiment')
     parser.add_argument('--finetune', action='store_true', default=False, help='False: no finetuning'
                                                                                'True: finetune on YOUth')
+    parser.add_argument('--test', action='store_true', default=False, help='False: no testing'
+                                                                           'True: testing on the test set at the end')
+    parser.add_argument('--log_test_results', action='store_true', default=False, help='False: no logging'
+                                                                                       'True: logging test results')
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
@@ -176,7 +180,7 @@ def main():
     model_experiment_name = get_experiment_name(cfg)
     if args.finetune:
         model_exp_dir = "experiments"
-        cfg.LR = cfg.LR / 10
+        cfg.LR = cfg.LR / 5
     else:
         model_exp_dir = args.exp_dir
     root_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
@@ -199,6 +203,15 @@ def main():
     best_model_path = train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, validation_loader,
                                   exp_dir=exp_dir, start_epoch=start_epoch, resume=args.resume)
     # TODO: Write best model's name/path to a file after the training is completed.
+    if args.test:
+        from YOUth_test import test_model
+        model.load_state_dict(torch.load(best_model_path))
+        model.eval()
+        model = model.to(device)
+        acc, acc_blncd, f1 = test_model(model, best_model_path, experiment_name, exp_dir, test_loader, True, device)
+        if args.log_test_results:
+            with open("test_results.txt", 'a+') as file1:
+                file1.write(f"{best_model_path}, {acc}, {acc_blncd}, {f1}\n")
 
 
 if __name__ == '__main__':

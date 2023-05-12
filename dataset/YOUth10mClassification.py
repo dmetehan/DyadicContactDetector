@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 sys.path.append("/mnt/hdd1/GithubRepos/ContactClassification")
 os.chdir('/mnt/hdd1/GithubRepos/ContactClassification')
@@ -22,10 +23,12 @@ SET_SPLITS = {'train': ['B48446', 'B56392', 'B00738', 'B00501', 'B43691', 'B6417
               'val': ['B45742', 'B73095', 'B00267', 'B74193', 'B45111', 'B54074', 'B00402', 'B48908', 'B38777', 'B64396', 'B70930', 'B60483', 'B67411', 'B36445', 'B54732', 'B70410', 'B78220', 'B60741', 'B68344', 'B00018'],
               'test': ['B44040', 'B66340', 'B62722', 'B45358', 'B46724', 'B72504', 'B49249', 'B83755', 'B50284', 'B77974', 'B63936', 'B34489', 'B62594', 'B56066', 'B00836', 'B49427', 'B71725', 'B53434', 'B46237', 'B41317']}
 
+
+
 # Images should be cropped around interacting people pairs before using this class.
 class YOUth10mClassification(Dataset):
     def __init__(self, root_dir, camera='cam1', transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224),
-                 augment=(), recalc_joint_hmaps=False, bodyparts_dir=None, _set=None):
+                 augment=(), recalc_joint_hmaps=False, bodyparts_dir=None, _set=None, train_frac=None):
         global SET_SPLITS
         set_subjects = SET_SPLITS[_set]
         self._set = _set
@@ -51,7 +54,13 @@ class YOUth10mClassification(Dataset):
         img_labels_dets = img_labels_dets[img_labels_dets['contact_type'] != 1].reset_index(drop=True)  # remove ambiguous class
         # filter only _set subjects:
         self.img_labels_dets = img_labels_dets[img_labels_dets['crop_path'].str.contains('|'.join(set_subjects))].reset_index(drop=True)
-        self.check_labels_dets_matching(img_labels, self.img_labels_dets)
+        if train_frac is None or _set != 'train':
+            self.check_labels_dets_matching(img_labels, self.img_labels_dets)
+        else:
+            assert  0 < train_frac <= 1, "train_frac should be between (0, 1]"
+            print(f"Choosing {train_frac} of the training set ({len(self.img_labels_dets)})!")
+            self.img_labels_dets = self.img_labels_dets.sample(frac=train_frac, random_state=42).reset_index(drop=True)
+            print(f"After selection: {len(self.img_labels_dets)} frames")
         self.transform = transform
         self.target_transform = target_transform
         self.augment = augment
@@ -420,7 +429,8 @@ class YOUth10mClassification(Dataset):
 def init_datasets_with_cfg(root_dir, _, cfg):
     return init_datasets(root_dir, root_dir, cfg.BATCH_SIZE, option=cfg.OPTION,
                          target_size=cfg.TARGET_SIZE, num_workers=8,
-                         augment=cfg.AUGMENTATIONS, bodyparts_dir=cfg.BODYPARTS_DIR)
+                         augment=cfg.AUGMENTATIONS, bodyparts_dir=cfg.BODYPARTS_DIR,
+                         train_frac=cfg.TRAIN_FRAC if hasattr(cfg, 'TRAIN_FRAC') else None)
 
 def init_datasets_with_cfg_dict(root_dir, _, config_dict):
     return init_datasets(root_dir, root_dir, config_dict["BATCH_SIZE"], option=config_dict["OPTION"],
@@ -428,9 +438,10 @@ def init_datasets_with_cfg_dict(root_dir, _, config_dict):
                          bodyparts_dir=config_dict["BODYPARTS_DIR"], )
 
 
-def init_datasets(root_dir, _, batch_size, option=Options.jointmaps, target_size=(224, 224), num_workers=2, augment=(), bodyparts_dir=None):
+def init_datasets(root_dir, _, batch_size, option=Options.jointmaps, target_size=(224, 224), num_workers=2, augment=(),
+                  bodyparts_dir=None, train_frac=None):
     train_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, augment=augment,
-                                           bodyparts_dir=bodyparts_dir, _set='train')
+                                           bodyparts_dir=bodyparts_dir, _set='train', train_frac=train_frac)
     val_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, augment=augment,
                                          bodyparts_dir=bodyparts_dir, _set='val')
     test_dataset = YOUth10mClassification(root_dir, option=option, target_size=target_size, augment=augment,

@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 import torch
@@ -12,14 +13,17 @@ from scipy.stats import multivariate_normal
 import torchvision.transforms.v2 as transforms
 from torchvision.transforms import InterpolationMode
 from torch.utils.data.sampler import WeightedRandomSampler
+from scipy.spatial import distance_matrix
 
+sys.path.append("/mnt/hdd1/GithubRepos/ContactClassification")
+os.chdir('/mnt/hdd1/GithubRepos/ContactClassification')
 from utils import Aug, Options, parse_config
 
 
 # Images should be cropped around interacting people pairs before using this class.
 class FlickrCI3DClassification(Dataset):
     def __init__(self, set_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224),
-                 augment=(), is_test=False, bodyparts_dir=None):
+                 augment=(), is_test=False, bodyparts_dir=None, recalc_hmaps=False):
 
         self.option = option
         if Aug.crop in augment:
@@ -28,6 +32,7 @@ class FlickrCI3DClassification(Dataset):
         else:
             self.resize = target_size
         self.target_size = target_size
+        self.recalc = recalc_hmaps
         labels_file = os.path.join(set_dir, "crop_contact_classes.csv")
         dets_file = os.path.join(set_dir, "pose_detections.json")
         self.heatmaps_dir = os.path.join(set_dir, "heatmaps")
@@ -90,7 +95,8 @@ class FlickrCI3DClassification(Dataset):
                 return gauss_hmap_rgb, label
             else:
                 return gauss_hmap, label
-        return np.zeros((34 if not rgb else 37, self.resize[0], self.resize[1]), dtype=np.float32), label
+        if not self.recalc:
+            return np.zeros((34 if not rgb else 37, self.resize[0], self.resize[1]), dtype=np.float32), label
         width, height = crop.size
         x = np.linspace(0, width - 1, width)
         y = np.linspace(0, height - 1, height)
@@ -313,6 +319,10 @@ class FlickrCI3DClassification(Dataset):
             data, label = self.get_heatmaps(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
             data = np.vstack((data, bodyparts))
+        elif self.option == Options.jointmaps_bodyparts:
+            data, label = self.get_heatmaps(idx, rgb=False)
+            bodyparts = self.get_bodyparts(idx)
+            data = np.vstack((data, bodyparts))
         else:
             raise NotImplementedError()
 
@@ -373,8 +383,8 @@ def init_datasets(train_dir, test_dir, batch_size, option=Options.debug, val_spl
     train_dataset = FlickrCI3DClassification(train_dir, option=option, target_size=target_size, augment=augment, bodyparts_dir=bodyparts_dir)
     # Creating data indices for training and validation splits:
     indices = list(train_dataset.img_labels.index)
-    np.random.seed(random_seed)
-    torch.manual_seed(random_seed)
+    # np.random.seed(random_seed)
+    # torch.manual_seed(random_seed)
     no_contact_inds = list(train_dataset.img_labels[train_dataset.img_labels["contact_type"] == 0].index)
     contact_inds = list(train_dataset.img_labels[train_dataset.img_labels["contact_type"] == 1].index)
     np.random.shuffle(no_contact_inds)
@@ -461,6 +471,55 @@ def test_distribution(cfg, train_dir, test_dir):
     assert abs(val_touch_percent - test_touch_percent) < 1
 
 
+def test_distance(cfg, train_dir, test_dir):
+    val_split = 0.2
+    # Check the distances between people in validation and test sets
+    train_dataset = FlickrCI3DClassification(train_dir, option=cfg.OPTION, target_size=cfg.TARGET_SIZE, bodyparts_dir="bodyparts_binary")
+    indices = list(train_dataset.img_labels.index)
+    no_contact_inds = list(train_dataset.img_labels[train_dataset.img_labels["contact_type"] == 0].index)
+    contact_inds = list(train_dataset.img_labels[train_dataset.img_labels["contact_type"] == 1].index)
+    np.random.shuffle(no_contact_inds)
+    np.random.shuffle(contact_inds)
+    train_inds = no_contact_inds[int(np.floor(val_split * len(no_contact_inds))):] \
+                 + contact_inds[int(np.floor(val_split * len(contact_inds))):]
+    val_indices = no_contact_inds[:int(np.floor(val_split * len(no_contact_inds)))] \
+                 + contact_inds[:int(np.floor(val_split * len(contact_inds)))]
+    proximity_dist = {0: [], 1: []}
+    for n in val_indices:
+        label = int(train_dataset.img_labels.loc[n, 'contact_type'])
+        if len(train_dataset.pose_dets[n]['preds']) == 2:
+            distances = distance_matrix(np.array(train_dataset.pose_dets[n]['preds'][0])[:, :2],
+                                        np.array(train_dataset.pose_dets[n]['preds'][1])[:, :2])
+            proximity_dist[label].append(np.min(distances))
+    # print(proximity_dist)
+    print("Validation set")
+    print(np.mean(proximity_dist[0]), np.std(proximity_dist[0]), np.min(proximity_dist[0]), np.max(proximity_dist[0]))
+    print(np.mean(proximity_dist[1]), np.std(proximity_dist[1]), np.min(proximity_dist[1]), np.max(proximity_dist[1]))
+    proximity_dist = {0: [], 1: []}
+    for n in train_inds:
+        label = int(train_dataset.img_labels.loc[n, 'contact_type'])
+        if len(train_dataset.pose_dets[n]['preds']) == 2:
+            distances = distance_matrix(np.array(train_dataset.pose_dets[n]['preds'][0])[:, :2],
+                                        np.array(train_dataset.pose_dets[n]['preds'][1])[:, :2])
+            proximity_dist[label].append(np.min(distances))
+    # print(proximity_dist)
+    print("Training set")
+    print(np.mean(proximity_dist[0]), np.std(proximity_dist[0]), np.min(proximity_dist[0]), np.max(proximity_dist[0]))
+    print(np.mean(proximity_dist[1]), np.std(proximity_dist[1]), np.min(proximity_dist[1]), np.max(proximity_dist[1]))
+
+    dataset = FlickrCI3DClassification(test_dir, option=cfg.OPTION, bodyparts_dir="bodyparts_binary")
+    # print(dataset.pose_dets[0]['preds'])
+    proximity_dist = {0: [], 1: []}
+    for n in range(len(dataset)):
+        label = int(dataset.img_labels.loc[n, 'contact_type'])
+        if len(dataset.pose_dets[n]['preds']) == 2:
+            distances = distance_matrix(np.array(dataset.pose_dets[n]['preds'][0])[:, :2],
+                                        np.array(dataset.pose_dets[n]['preds'][1])[:, :2])
+            proximity_dist[label].append(np.min(distances))
+    # print(proximity_dist)
+    print("Test set")
+    print(np.mean(proximity_dist[0]), np.std(proximity_dist[0]), np.min(proximity_dist[0]), np.max(proximity_dist[0]))
+    print(np.mean(proximity_dist[1]), np.std(proximity_dist[1]), np.min(proximity_dist[1]), np.max(proximity_dist[1]))
 
 def test_class():
     option = Options.jointmaps
@@ -508,23 +567,24 @@ def test_get_bodyparts():
 
 
 def test_get_heatmaps():
-    option = 2
+    option = Options.gaussian
     train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    train_dataset = FlickrCI3DClassification(train_dir, option=option)
+    train_dataset = FlickrCI3DClassification(train_dir, option=option, recalc_hmaps=True)
+    train_dataset.set_train_inds(list(range(len(train_dataset))))
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32)
     dataiter = iter(train_loader)
     count = 0
-    for heatmap, label in dataiter:
+    for _, heatmap, label in dataiter:
         count += len(label)
         if count % 100 == 0:
             print(count)
 
     test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
-    test_dataset = FlickrCI3DClassification(test_dir, option=option)
+    test_dataset = FlickrCI3DClassification(test_dir, option=option, recalc_hmaps=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
     dataiter = iter(test_loader)
     count = 0
-    for heatmap, label in dataiter:
+    for _, heatmap, label in dataiter:
         count += len(label)
         if count % 100 == 0:
             print(count)
@@ -541,11 +601,12 @@ def main():
     cfg = parse_config(args.config_file)
     # test_overlaps(cfg, train_dir_ssd, test_dir_ssd)
     # test_distribution(cfg, train_dir_ssd, test_dir_ssd)
-    test_input(cfg, train_dir_ssd, test_dir_ssd)
+    test_distance(cfg, train_dir_ssd, test_dir_ssd)
+    # test_input(cfg, train_dir_ssd, test_dir_ssd)
 
 
 if __name__ == '__main__':
-    main()
+    # main()
     # test_class()
-    # test_get_heatmaps()
+    test_get_heatmaps()
     # test_get_bodyparts()

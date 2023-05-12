@@ -1,0 +1,9 @@
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.001_b64_20230505_151102_9, 77.94, 76.51, 60.59, 79.15, 73.87
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230505_182711_5, 83.85, 72.12, 58.91, 93.80, 50.44
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230505_211912_4, 84.08, 69.37, 54.87, 96.57, 42.17
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop_strat_lr0.002_b64_20230506_000707_7, 82.13, 69.24, 53.84, 93.06, 45.43
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_025316_5, 84.21, 70.81, 57.24, 95.58, 46.05
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_050156_4, 82.60, 70.76, 56.32, 92.65, 48.87
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_070944_3, 83.28, 67.90, 52.00, 96.32, 39.47
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_091936_5, 82.79, 75.28, 62.08, 89.16, 61.40
+experiments/001_jointmaps_rgb_bodyparts_pretrCopy_112_Aug-hflip-crop-color_strat_lr0.0015_b64_20230506_114032_6, 83.78, 74.32, 61.66, 91.81, 56.83

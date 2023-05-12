@@ -14,12 +14,28 @@ from utils import parse_config, get_experiment_name, find_last_values_tensorboar
 
 # this is important for FLickrCI3DClassification. It doesn't allow importint v2 after initializing the network.
 import torchvision.transforms.v2 as transforms
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Working on {device}")
 ContactClassifier(backbone="resnet50")
 # net should be initialized here before importing torchvision
 from dataset.FlickrCI3DClassification import init_datasets_with_cfg
+
+
+class EarlyStopping:
+    def __init__(self, tolerance=5, min_delta=0):
+
+        self.tolerance = tolerance
+        self.min_delta = min_delta
+        self.counter = 0
+        self.early_stop = False
+
+    def __call__(self, train_loss, validation_loss):
+        if (validation_loss - train_loss) > self.min_delta:
+            self.counter +=1
+            if self.counter >= self.tolerance:
+                self.early_stop = True
 
 
 def train_one_epoch(model, optimizer, loss_fn, train_loader, epoch_index, tb_writer, batch_size):
@@ -74,8 +90,10 @@ def train_one_epoch(model, optimizer, loss_fn, train_loader, epoch_index, tb_wri
     return overall_loss, acc_blncd, acc, f1
 
 
-def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, validation_loader,
+def train_model(model, optimizer, scheduler, loss_fn_train, experiment_name, cfg, train_loader, validation_loader,
                 exp_dir="experiments", start_epoch=0, resume=False):
+    loss_fn_valid = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, 3.35]).to(device))
+    early_stopping = EarlyStopping(tolerance=5, min_delta=10)
     best_model_path = ''
     if resume:
         timestamps = ['_'.join(folder_name.split('_')[-2:]) for folder_name in sorted(os.listdir(exp_dir))
@@ -100,7 +118,7 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_loss, acc_blncd, acc, f1 = train_one_epoch(model, optimizer, loss_fn, train_loader, epoch, writer, cfg.BATCH_SIZE)
+        avg_loss, acc_blncd, acc, f1 = train_one_epoch(model, optimizer, loss_fn_train, train_loader, epoch, writer, cfg.BATCH_SIZE)
 
         # We don't need gradients on to do reporting
         model.train(False)
@@ -115,7 +133,7 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
             vlabels = nn.functional.one_hot(vlabels, num_classes=2).to(device)
             voutputs = model(vinputs)
             all_preds[i, :len(vlabels)] = torch.argmax(voutputs.detach().cpu(), dim=1)
-            vloss = loss_fn(voutputs, vlabels.float())
+            vloss = loss_fn_valid(voutputs, vlabels.float())
             running_vloss += vloss.detach()
         all_preds = all_preds.flatten()[:-(cfg.BATCH_SIZE - len(vlabels))]
         all_labels = all_labels.flatten()[:-(cfg.BATCH_SIZE - len(vlabels))]
@@ -123,6 +141,7 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
         vacc = accuracy_score(all_labels, all_preds)
         vf1 = f1_score(all_labels, all_preds)
         avg_vloss = running_vloss / (i + 1)
+        scheduler.step(avg_vloss)
         print('LOSS train {} valid {} - ACC_BLNCD train {} valid {}'.format(avg_loss, avg_vloss, acc_blncd, vacc_blncd))
 
         writer.add_scalars('Training vs. Validation Loss',
@@ -140,18 +159,21 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
         writer.flush()
 
         # Track the best performance, and save the model's state
-        # if avg_vloss < best_vloss:
-        #     best_vloss = avg_vloss
-        #     if vacc_blncd > best_vacc_blncd:
-        #         best_vacc_blncd = vacc_blncd
-        #     model_path = '{}/{}_{}_{}'.format(exp_dir, experiment_name, timestamp, epoch + 1)
-        #     torch.save(model.state_dict(), model_path)
-        #     best_model_path = model_path
-        if vacc_blncd > best_vacc_blncd:
-            best_vacc_blncd = vacc_blncd
+        if avg_vloss < best_vloss:
+            best_vloss = avg_vloss
             model_path = '{}/{}_{}_{}'.format(exp_dir, experiment_name, timestamp, epoch + 1)
             torch.save(model.state_dict(), model_path)
             best_model_path = model_path
+        # if vacc_blncd > best_vacc_blncd:
+        #     best_vacc_blncd = vacc_blncd
+        #     model_path = '{}/{}_{}_{}'.format(exp_dir, experiment_name, timestamp, epoch + 1)
+        #     torch.save(model.state_dict(), model_path)
+        #     best_model_path = model_path
+        # early stopping
+        early_stopping(avg_loss, avg_vloss)
+        if early_stopping.early_stop:
+            print("Early stopping at epoch:", i)
+            break
 
     print('Finished Training')
     print(f'Best model is saved at: {best_model_path}')
@@ -161,19 +183,23 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
 def main():
     parser = ArgumentParser()
     parser.add_argument('config_file', help='config file')
-    parser.add_argument('--resume', action='store_true', default=False, help='False: start from scratch, '
-                                                                               'True: continue the last experiment')
+    parser.add_argument('--resume', action='store_true', default=False, help='False: start from scratch, ')
+    parser.add_argument('--test', action='store_true', default=False, help='False: no testing'
+                                                                           'True: testing on the test set at the end')
+    parser.add_argument('--log_test_results', action='store_true', default=False, help='False: no logging'
+                                                                                       'True: logging test results')
     exp_dir = "experiments"
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
 
-    # train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification/train'
-    # test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification/test'
-    train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
+    train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification/train'
+    test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification/test'
+    # train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
+    # test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
     model, optimizer, loss_fn = initialize_model(cfg, device)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.5)
     experiment_name = get_experiment_name(cfg)
     start_epoch = 0
     if args.resume:
@@ -182,10 +208,19 @@ def main():
         models.sort(key=lambda x: x[1])
         model_name, start_epoch = models[-1]
         model.load_state_dict(torch.load(f"{exp_dir}/{model_name}"))
-    train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir_ssd, test_dir_ssd, cfg)
-    best_model_path = train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, validation_loader,
+    train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir_hdd, test_dir_hdd, cfg)
+    best_model_path = train_model(model, optimizer, scheduler, loss_fn, experiment_name, cfg, train_loader, validation_loader,
                                   exp_dir=exp_dir, start_epoch=start_epoch, resume=args.resume)
     # TODO: Write best model's name/path to a file after the training is completed.
+    if args.test:
+        from test import test_model
+        model.load_state_dict(torch.load(best_model_path))
+        model.eval()
+        model = model.to(device)
+        acc, acc_blncd, f1, acc_no_contact, acc_contact = test_model(model, best_model_path, experiment_name, exp_dir, test_loader, True, device)
+        if args.log_test_results:
+            with open("test_results.txt", 'a+') as file1:
+                file1.write(f"{best_model_path}, {acc}, {acc_blncd}, {f1}, {acc_no_contact}, {acc_contact}\n")
 
 
 if __name__ == '__main__':

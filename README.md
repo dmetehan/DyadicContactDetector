@@ -1,10 +1,10 @@
 # ContactClassification
 
-# Requirements:
+## Requirements:
 * mmpose (git submodule update --init --recursive)
 * Python 3.8 (virtualenv --python=/usr/bin/python3.8 venv && source venv/bin/activate && pip install -r requirements.txt)
 
-# To run:
+## To run:
 1. Crop images around interacting people:<br>
 <code>python prep_crops.py '/mnt/hdd1/Datasets/CI3D/FlickrCI3D Classification'</code>
 2. Create a new environment to run mmdet and mmpose on the crops:<br>

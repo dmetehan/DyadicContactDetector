@@ -1,7 +1,7 @@
 # ContactClassification
 
 ## Requirements:
-* mmpose (git submodule update --init --recursive)
+* mmpose (git submodule update --init --recursive --remote)
 * Python 3.8 (virtualenv --python=/usr/bin/python3.8 venv && source venv/bin/activate && pip install -r requirements.txt)
 
 ## To run:

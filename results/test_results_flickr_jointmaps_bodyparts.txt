@@ -1,9 +1,0 @@
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230608_164104_6, 82.71, 69.54, 54.54, 93.90, 45.18
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230608_220446_4, 83.38, 68.10, 52.39, 96.34, 39.85
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_010853_3, 83.72, 69.35, 54.68, 95.91, 42.79
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_041749_5, 83.81, 75.24, 62.74, 91.08, 59.40
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_071742_2, 81.84, 65.89, 47.92, 95.37, 36.40
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_101130_4, 82.37, 69.16, 53.81, 93.58, 44.74
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_131953_6, 83.07, 72.59, 59.06, 91.97, 53.20
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_164021_5, 84.41, 73.67, 61.31, 93.52, 53.82
-exp/Flickr/010_jointmaps_bodyparts_split_pretrCopy_112_Aug-hflip-crop_strat_lr0.0015_b64_20230609_195125_5, 83.26, 74.00, 60.94, 91.12, 56.89

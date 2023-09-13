@@ -2,7 +2,7 @@
 
 # Requirements:
 * mmpose (git submodule update --init --recursive)
-* 
+* Python 3.8 (virtualenv --python=/usr/bin/python3.8 venv && source venv/bin/activate && pip install -r requirements.txt)
 
 # Installation:
 

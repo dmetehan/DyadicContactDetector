@@ -15,11 +15,11 @@ class ContactClassifier(nn.Module):
             self.conv1 = conv1_pretrained
         else:
             input_size = -1
-            if option in [Options.gaussian, Options.jointmaps]:
+            if option in [Options.jointmaps]:
                 input_size = 34
-            elif option in [Options.gaussian_rgb, Options.jointmaps_rgb]:
+            elif option in [Options.jointmaps_rgb]:
                 input_size = 37
-            elif option in [Options.gaussian_rgb_bodyparts, Options.jointmaps_rgb_bodyparts]:
+            elif option in [Options.jointmaps_rgb_bodyparts]:
                 input_size = 52
             elif option in [Options.bodyparts]:
                 input_size = 15
@@ -33,8 +33,7 @@ class ContactClassifier(nn.Module):
                 input_size = 1
             self.conv1 = nn.Conv2d(input_size, 64, kernel_size=7, stride=2, padding=3, bias=False)
         if copy_rgb_weights:
-            if option in [Options.gaussian_rgb, Options.jointmaps_rgb,
-                          Options.jointmaps_rgb_bodyparts, Options.gaussian_rgb_bodyparts]:
+            if option in [Options.jointmaps_rgb, Options.jointmaps_rgb_bodyparts]:
                 self.conv1.weight.data[:, 34:37, :, :] = conv1_pretrained.weight  # copy the weights to the rgb channels
             elif option in [Options.rgb, Options.rgb_bodyparts]:
                 self.conv1.weight.data[:, :3, :, :] = conv1_pretrained.weight  # copies the weights to the rgb channels

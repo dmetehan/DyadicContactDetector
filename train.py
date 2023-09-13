@@ -182,23 +182,25 @@ def train_model(model, optimizer, scheduler, loss_fn_train, experiment_name, cfg
 
 def main():
     parser = ArgumentParser()
+    parser.add_argument('dataset_dir', help='dataset directory path')
     parser.add_argument('config_file', help='config file')
+    parser.add_argument('exp_dir', help='experiment directory')
     parser.add_argument('--resume', action='store_true', default=False, help='False: start from scratch, ')
     parser.add_argument('--test', action='store_true', default=False, help='False: no testing'
                                                                            'True: testing on the test set at the end')
     parser.add_argument('--log_test_results', action='store_true', default=False, help='False: no logging'
                                                                                        'True: logging test results')
-    exp_dir = "exp/Flickr"
+
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
+    if not os.path.exists(args.dataset_dir):
+        raise FileNotFoundError(f"{args.dataset_dir} could not be found!")
     cfg = parse_config(args.config_file)
+    exp_dir = args.exp_dir
+    data_dir = args.dataset_dir
+    train_dir, test_dir = os.path.join(data_dir, "train"), os.path.join(data_dir, "test")
 
-    train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/Flickr-Classification/train'
-    test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/Flickr-Classification/test'
-    train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
-    train_dir, test_dir = train_dir_ssd, test_dir_ssd
     model, optimizer, loss_fn = initialize_model(cfg, device)
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.5)
     experiment_name = get_experiment_name(cfg)

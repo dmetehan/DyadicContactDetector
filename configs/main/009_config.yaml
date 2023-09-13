@@ -3,6 +3,7 @@ PRETRAINED: True
 COPY_RGB_WEIGHTS: True
 TARGET_SIZE: [112, 112]
 BODYPARTS_DIR: "bodyparts_binary"
+DEPTHMAPS_DIR: "depth_maps"
 AUGMENTATIONS: [hflip, crop]  # originally there is no color
 STRATIFIED: True  # feeding more touch class (underrepresented) to balance
 LOSS_WEIGHTS: [1, 1]  # keep these the same if stratified is True

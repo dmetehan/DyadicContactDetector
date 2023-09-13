@@ -1,12 +1,14 @@
 import os
 from argparse import ArgumentParser
 
+import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, balanced_accuracy_score, accuracy_score, f1_score
+from sklearn.metrics import confusion_matrix, balanced_accuracy_score, accuracy_score, f1_score, precision_score, recall_score
 import seaborn as sn
 import pandas as pd
 from tqdm import tqdm
+from scipy import stats
 
 from ContactClassifier import ContactClassifier, initialize_model
 from utils import parse_config, get_experiment_name
@@ -22,6 +24,7 @@ _ = ContactClassifier()
 from dataset.YOUth10mClassification import init_datasets_with_cfg
 
 CLASSES = ("no touch", "touch")
+
 
 def test_model(model, model_name, exp_name, exp_dir, data_loader, test_set, device):
     model.eval()
@@ -49,9 +52,25 @@ def test_model(model, model_name, exp_name, exp_dir, data_loader, test_set, devi
     acc = accuracy_score(y_true, y_pred)
     acc_blncd = balanced_accuracy_score(y_true, y_pred)
     f1 = f1_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred)
+    recall = recall_score(y_true, y_pred)
     print(f'Accuracy of the network on the test images ({len(y_true)}): {acc:.4f}')
     print(f'Balanced accuracy of the network on the test images ({len(y_true)}): {acc_blncd:.4f}')
     print(f'F1 Score of the network on the test images ({len(y_true)}): {f1:.4f}')
+    print(f'Precision of the network on the test images ({len(y_true)}): {precision:.4f}')
+    print(f'Recall of the network on the test images ({len(y_true)}): {recall:.4f}')
+
+    print(f"Paired t-test with all-no-contact: {stats.ttest_rel(y_pred, np.zeros_like(y_pred))}")
+    np.random.seed(1)
+    print(f"Paired t-test with random: {stats.ttest_rel(y_pred, np.random.randint(0, 2, len(y_pred)))}")
+    print(f"Paired t-test with informed guess: "
+          f"{stats.ttest_rel(y_pred, [np.random.choice(np.arange(0, 2), p=[0.5510818953711312, 0.44891810462886883]) for _ in range(len(y_pred))])}")
+
+    print(f"Paired t-test with all-no-contact: {stats.ttest_rel(np.zeros_like(y_pred), y_pred)}")
+    np.random.seed(1)
+    print(f"Paired t-test with random: {stats.ttest_rel(np.random.randint(0, 2, len(y_pred)), y_pred)}")
+    print(f"Paired t-test with informed guess: "
+          f"{stats.ttest_rel([np.random.choice(np.arange(0, 2), p=[0.5510818953711312, 0.44891810462886883]) for _ in range(len(y_pred))], y_pred)}")
 
     dir_name = [file_name for file_name in sorted(os.listdir(exp_dir)) if exp_name in file_name and os.path.isdir(f'{exp_dir}/{file_name}')][-1]
     cf_matrix_norm = confusion_matrix(y_true, y_pred, normalize='true')
@@ -73,6 +92,8 @@ def test_model(model, model_name, exp_name, exp_dir, data_loader, test_set, devi
 
 
 def load_model_weights(model, exp_dir, exp_name):
+    print([file_name for file_name in sorted(os.listdir(exp_dir))])
+    print(exp_name)
     models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(exp_dir))
               if (exp_name in file_name) and os.path.isfile(os.path.join(exp_dir, file_name))]
     models.sort(key=lambda x: x[1])
@@ -95,11 +116,11 @@ def main():
     root_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
     model, _, _ = initialize_model(cfg, device)
     if args.finetune:
-        cfg.LR = cfg.LR / 10
+        cfg.LR = cfg.LR / 5
     exp_name = get_experiment_name(cfg)
     if args.finetune:
         exp_name = f'finetune_{exp_name}'
-    cfg.BATCH_SIZE = 1 # to get accurate results
+    cfg.BATCH_SIZE = 1  # to get accurate results
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(root_dir_ssd, root_dir_ssd, cfg)
     model_name = load_model_weights(model, args.exp_dir, exp_name)
     test_model(model, model_name, exp_name, args.exp_dir, test_loader if args.test_set else validation_loader,

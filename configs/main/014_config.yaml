@@ -1,4 +1,4 @@
-OPTION: "jointmaps_bodyparts_depth"
+OPTION: "depth"
 PRETRAINED: True
 COPY_RGB_WEIGHTS: True
 TARGET_SIZE: [112, 112]

@@ -172,6 +172,8 @@ def main():
                                                                                        'True: logging test results')
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
+        print(os.path.abspath(os.curdir))
+        print(os.listdir('/'.join(args.config_file.split('/')[:-1])))
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
     exp_dir = args.exp_dir
@@ -184,11 +186,11 @@ def main():
     else:
         model_exp_dir = args.exp_dir
     root_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all'
-    model, optimizer, loss_fn = initialize_model(cfg, device)
+    model, optimizer, loss_fn = initialize_model(cfg, device, finetune=args.finetune)
     experiment_name = get_experiment_name(cfg)
     start_epoch = 0
     if args.resume or args.finetune:
-        models = [(file_name, int(file_name.split('_')[-1])) for file_name in sorted(os.listdir(model_exp_dir))
+        models = [(file_name, int(file_name.split('_')[-1].split('.')[0])) for file_name in sorted(os.listdir(model_exp_dir))
                               if (model_experiment_name in file_name) and os.path.isfile(os.path.join(model_exp_dir, file_name))]
         models.sort(key=lambda x: x[1])
         model_name, start_epoch = models[-1]
@@ -208,6 +210,7 @@ def main():
         model.load_state_dict(torch.load(best_model_path))
         model.eval()
         model = model.to(device)
+        cfg.BATCH_SIZE = 1  # for accurate results
         acc, acc_blncd, f1 = test_model(model, best_model_path, experiment_name, exp_dir, test_loader, True, device)
         if args.log_test_results:
             with open("test_results.txt", 'a+') as file1:

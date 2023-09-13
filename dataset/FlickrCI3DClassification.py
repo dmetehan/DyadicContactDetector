@@ -1,10 +1,9 @@
-import sys
 import os
 import json
 import torch
 import numpy as np
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageFile
 from typing import List, Dict
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser
@@ -15,16 +14,18 @@ from torchvision.transforms import InterpolationMode
 from torch.utils.data.sampler import WeightedRandomSampler
 from scipy.spatial import distance_matrix
 
-sys.path.append("/mnt/hdd1/GithubRepos/ContactClassification")
-os.chdir('/mnt/hdd1/GithubRepos/ContactClassification')
 from utils import Aug, Options, parse_config
+
+
+# For the error "OSError: unrecognized data stream contents when reading image file"
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 # Images should be cropped around interacting people pairs before using this class.
 class FlickrCI3DClassification(Dataset):
     def __init__(self, set_dir, transform=None, target_transform=None, option=Options.jointmaps, target_size=(224, 224),
                  augment=(), is_test=False, bodyparts_dir=None, recalc_hmaps=False):
-
+        target_size = tuple(target_size)
         self.option = option
         if Aug.crop in augment:
             self.resize = (int(round((1.14285714286 * target_size[0]))),
@@ -265,6 +266,7 @@ class FlickrCI3DClassification(Dataset):
     def get_bodyparts(self, idx):
         part_ids = [0, 13, 18, 24, 21, 20, 11, 8, 12, 6, 2, 16, 5, 25, 22]
         bodyparts_path = f'{os.path.join(self.bodyparts_dir, "bpl_"+os.path.basename(self.img_labels.loc[idx, "crop_path"]))}'
+        bodyparts_base_path = f'{bodyparts_path.split(".")[0]}'
         if os.path.exists(bodyparts_path):
             # convert colors into boolean maps per body part channel (+background)
             bodyparts_img = np.asarray(transforms.Resize(self.resize, interpolation=InterpolationMode.NEAREST)(Image.open(bodyparts_path)), dtype=np.uint32)
@@ -284,6 +286,22 @@ class FlickrCI3DClassification(Dataset):
                     plt.imshow(bodyparts[i, :, :], alpha=0.5)
                     plt.show()
             return bodyparts
+        elif os.path.exists(bodyparts_base_path + '_0.png'):
+            bodyparts = np.zeros(self.resize + (15,), dtype=np.float32)
+            for i in range(5):
+                cur_part_path = f"{bodyparts_base_path}_{i}.png"
+                # convert colors into boolean maps per body part channel (+background)
+                bodyparts_img = np.asarray(
+                    transforms.Resize(self.resize, interpolation=InterpolationMode.NEAREST)(Image.open(cur_part_path)),
+                    dtype=np.uint32)
+                bodyparts[:, :, (3*i):(3*i+3)] = bodyparts_img / 255.0  # normalization
+                # if self.option == Options.debug:  # debug option
+                # crop = Image.open(f'{os.path.join(self.crops_dir, os.path.basename(self.img_labels_dets.loc[idx, "crop_path"]))}')
+                # crop = np.array(crop.resize(self.resize))
+                # plt.imshow(crop)
+                # plt.imshow(bodyparts_img, alpha=0.5)
+                # plt.show()
+            return np.transpose(bodyparts, (2, 0, 1))  # reorder dimensions
         else:
             print(f"WARNING: {bodyparts_path} doesn't exist!")
             return np.zeros((15, self.resize[0], self.resize[1]), dtype=np.float32)
@@ -375,12 +393,15 @@ def init_datasets_with_cfg(train_dir, test_dir, cfg):
 def init_datasets_with_cfg_dict(train_dir, test_dir, config_dict):
     return init_datasets(train_dir, test_dir, config_dict["BATCH_SIZE"], option=config_dict["OPTION"], val_split=0.2,
                          target_size=config_dict["TARGET_SIZE"], num_workers=8,
-                         augment=config_dict["AUGMENTATIONS"], bodyparts_dir=config_dict["BODYPARTS_DIR"], stratified=config_dict["STRATIFIED"])
+                         augment=config_dict["AUGMENTATIONS"], bodyparts_dir=config_dict["BODYPARTS_DIR"],
+                         stratified=config_dict["STRATIFIED"])
 
-def init_datasets(train_dir, test_dir, batch_size, option=Options.debug, val_split=0.2, target_size=(224, 224), num_workers=2,
-                  augment=(), bodyparts_dir=None, stratified=True):
+
+def init_datasets(train_dir, test_dir, batch_size, option=Options.debug, val_split=0.2, target_size=(224, 224),
+                  num_workers=2, augment=(), bodyparts_dir=None, stratified=True):
     random_seed = 1
-    train_dataset = FlickrCI3DClassification(train_dir, option=option, target_size=target_size, augment=augment, bodyparts_dir=bodyparts_dir)
+    train_dataset = FlickrCI3DClassification(train_dir, option=option, target_size=target_size, augment=augment,
+                                             bodyparts_dir=bodyparts_dir)
     # Creating data indices for training and validation splits:
     indices = list(train_dataset.img_labels.index)
     # np.random.seed(random_seed)

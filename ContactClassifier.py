@@ -6,7 +6,8 @@ from utils import Options
 
 
 class ContactClassifier(nn.Module):
-    def __init__(self, backbone="resnet50", weights="IMAGENET1K_V2", option=Options.debug, copy_rgb_weights=False):
+    def __init__(self, backbone="resnet50", weights="IMAGENET1K_V2", option=Options.debug, copy_rgb_weights=False,
+                 finetune=False):
         super(ContactClassifier, self).__init__()
         resnet50 = torch.hub.load("pytorch/vision", backbone, weights=weights)
         conv1_pretrained = list(resnet50.children())[0]
@@ -26,6 +27,10 @@ class ContactClassifier(nn.Module):
                 input_size = 18
             elif option in [Options.jointmaps_bodyparts]:
                 input_size = 49
+            elif option in [Options.jointmaps_bodyparts_depth]:
+                input_size = 50
+            elif option in [Options.debug, Options.depth]:
+                input_size = 1
             self.conv1 = nn.Conv2d(input_size, 64, kernel_size=7, stride=2, padding=3, bias=False)
         if copy_rgb_weights:
             if option in [Options.gaussian_rgb, Options.jointmaps_rgb,
@@ -35,6 +40,14 @@ class ContactClassifier(nn.Module):
                 self.conv1.weight.data[:, :3, :, :] = conv1_pretrained.weight  # copies the weights to the rgb channels
         modules = list(resnet50.children())[1:-1]
         resnet50 = nn.Sequential(*modules)
+        if finetune:
+            print('Freezing the first convolutional layer!')
+            for name, param in resnet50.named_parameters():
+                if param.requires_grad and ('0.weight' == name or '0.bias' == name
+                                            or '3.0.bn1' in name or '3.0.conv1' in name):
+                    print(name)
+                    param.requires_grad = False
+        # print(list(resnet50.named_parameters()))
         self.feat_extractor = resnet50
         self.fc = nn.Linear(in_features=2048, out_features=2, bias=True)
 
@@ -48,12 +61,12 @@ class ContactClassifier(nn.Module):
         return x
 
 
-def initialize_model(cfg, device):
+def initialize_model(cfg, device, finetune=False):
     model = ContactClassifier(backbone="resnet50", weights="IMAGENET1K_V2" if cfg.PRETRAINED else None,
                               option=cfg.OPTION,
-                              copy_rgb_weights=cfg.COPY_RGB_WEIGHTS)
+                              copy_rgb_weights=cfg.COPY_RGB_WEIGHTS, finetune=finetune)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(cfg.LOSS_WEIGHTS).to(device))
-    optimizer = optim.AdamW(model.parameters(), lr=cfg.LR)
+    optimizer = optim.AdamW(model.parameters(), lr=cfg.LR, weight_decay=1e-4)
     return model, optimizer, loss_fn
 
 

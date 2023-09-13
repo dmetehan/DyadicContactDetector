@@ -24,17 +24,28 @@ class Options:
     debug = "debug"
     rgb = "rgb"
     bodyparts = "bodyparts"
+    depth = "depth"
     gaussian = "gaussian"  # gaussian heatmaps around detected keypoints
     jointmaps = "jointmaps"  # detected heatmaps mapped onto cropped image around interacting people
     gaussian_rgb = "gaussian_rgb"
     jointmaps_rgb = "jointmaps_rgb"
     rgb_bodyparts = "rgb_bodyparts"
+    rgb_depth = "rgb_depth"
     jointmaps_bodyparts = "jointmaps_bodyparts"
+    jointmaps_depth = "jointmaps_depth"
+    bodyparts_depth = "bodyparts_depth"
     gaussian_rgb_bodyparts = "gaussian_rgb_bodyparts"
     jointmaps_rgb_bodyparts = "jointmaps_rgb_bodyparts"
-    all = {"debug": debug, "rgb": rgb, "bodyparts": bodyparts, "gaussian": gaussian, "jointmaps": jointmaps, "gaussian_rgb": gaussian_rgb,
-           "jointmaps_rgb": jointmaps_rgb, "rgb_bodyparts": rgb_bodyparts, "jointmaps_bodyparts": jointmaps_bodyparts,
-           "gaussian_rgb_bodyparts": gaussian_rgb_bodyparts, "jointmaps_rgb_bodyparts": jointmaps_rgb_bodyparts}
+    jointmaps_rgb_depth = "jointmaps_rgb_depth"
+    rgb_bodyparts_depth = "rgb_bodyparts_depth"
+    jointmaps_bodyparts_depth = "jointmaps_bodyparts_depth"
+
+    all = {debug: debug, rgb: rgb, bodyparts: bodyparts, gaussian: gaussian, depth: depth, jointmaps: jointmaps,
+           gaussian_rgb: gaussian_rgb, jointmaps_rgb: jointmaps_rgb, rgb_bodyparts: rgb_bodyparts,
+           jointmaps_bodyparts: jointmaps_bodyparts, gaussian_rgb_bodyparts: gaussian_rgb_bodyparts,
+           jointmaps_rgb_bodyparts: jointmaps_rgb_bodyparts, rgb_depth: rgb_depth, jointmaps_depth: jointmaps_depth,
+           bodyparts_depth: bodyparts_depth, jointmaps_rgb_depth: jointmaps_rgb_depth,
+           rgb_bodyparts_depth: rgb_bodyparts_depth, jointmaps_bodyparts_depth: jointmaps_bodyparts_depth}
 
 
 def check_config(cfg):
@@ -60,6 +71,7 @@ def parse_config(config_file):
 def get_experiment_name(cfg):
     experiment_name = f'{cfg.ID}' \
                       f'_{cfg.OPTION}' \
+                      f'_{cfg.BODYPARTS_DIR.split("_")[-1]}' \
                       f'{"_pretr" if cfg.PRETRAINED else ""}{"Copy" if cfg.PRETRAINED and cfg.COPY_RGB_WEIGHTS else ""}' \
                       f'_{cfg.TARGET_SIZE[0]}' \
                       f'{"_Aug-" if len(cfg.AUGMENTATIONS) > 0 else ""}{"-".join(cfg.AUGMENTATIONS)}' \

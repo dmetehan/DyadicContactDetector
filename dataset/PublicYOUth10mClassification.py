@@ -1,17 +1,11 @@
 import os
-import sys
-
 import cv2
-
-sys.path.append("/mnt/hdd1/GithubRepos/ContactClassification")
-os.chdir('/mnt/hdd1/GithubRepos/ContactClassification')
-from collections import defaultdict
-
 import torch
 import numpy as np
 import pandas as pd
 from PIL import Image
 import matplotlib.pyplot as plt
+from collections import defaultdict
 from torch.utils.data import Dataset
 from scipy.stats import multivariate_normal
 import torchvision.transforms.v2 as transforms

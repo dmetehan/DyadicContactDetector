@@ -91,7 +91,7 @@ def train_one_epoch(model, optimizer, loss_fn, train_loader, epoch_index, tb_wri
 
 
 def train_model(model, optimizer, scheduler, loss_fn_train, experiment_name, cfg, train_loader, validation_loader,
-                exp_dir="experiments", start_epoch=0, resume=False):
+                exp_dir="Flickr", start_epoch=0, resume=False):
     loss_fn_valid = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, 3.35]).to(device))
     early_stopping = EarlyStopping(tolerance=5, min_delta=10)
     best_model_path = ''
@@ -188,16 +188,17 @@ def main():
                                                                            'True: testing on the test set at the end')
     parser.add_argument('--log_test_results', action='store_true', default=False, help='False: no logging'
                                                                                        'True: logging test results')
-    exp_dir = "experiments"
+    exp_dir = "exp/Flickr"
     args = parser.parse_args()
     if not os.path.exists(args.config_file):
         raise FileNotFoundError(f"{args.config_file} could not be found!")
     cfg = parse_config(args.config_file)
 
-    train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification/train'
-    test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification/test'
-    # train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
-    # test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
+    train_dir_hdd = '/mnt/hdd1/Datasets/CI3D/Flickr-Classification/train'
+    test_dir_hdd = '/mnt/hdd1/Datasets/CI3D/Flickr-Classification/test'
+    train_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
+    test_dir_ssd = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/test'
+    train_dir, test_dir = train_dir_ssd, test_dir_ssd
     model, optimizer, loss_fn = initialize_model(cfg, device)
     scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.5)
     experiment_name = get_experiment_name(cfg)
@@ -208,7 +209,7 @@ def main():
         models.sort(key=lambda x: x[1])
         model_name, start_epoch = models[-1]
         model.load_state_dict(torch.load(f"{exp_dir}/{model_name}"))
-    train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir_hdd, test_dir_hdd, cfg)
+    train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir, test_dir, cfg)
     best_model_path = train_model(model, optimizer, scheduler, loss_fn, experiment_name, cfg, train_loader, validation_loader,
                                   exp_dir=exp_dir, start_epoch=start_epoch, resume=args.resume)
     # TODO: Write best model's name/path to a file after the training is completed.
@@ -217,6 +218,7 @@ def main():
         model.load_state_dict(torch.load(best_model_path))
         model.eval()
         model = model.to(device)
+        cfg.BATCH_SIZE = 1  # for accurate results
         acc, acc_blncd, f1, acc_no_contact, acc_contact = test_model(model, best_model_path, experiment_name, exp_dir, test_loader, True, device)
         if args.log_test_results:
             with open("test_results.txt", 'a+') as file1:

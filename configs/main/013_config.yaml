@@ -1,12 +1,12 @@
-OPTION: "jointmaps_rgb_bodyparts"
+OPTION: "jointmaps_bodyparts_depth"
 PRETRAINED: True
 COPY_RGB_WEIGHTS: True
 TARGET_SIZE: [112, 112]
-BODYPARTS_DIR: "bodyparts_binary"
-DEPTHMAPS_DIR: "depth_maps"
-AUGMENTATIONS: [hflip, crop]  # originally there is no color
+BODYPARTS_DIR: "bodyparts_split"
+DEPTHMAPS_DIR: "depth_maps_png"
+AUGMENTATIONS: [hflip, crop]
 STRATIFIED: True  # feeding more touch class (underrepresented) to balance
 LOSS_WEIGHTS: [1, 1]  # keep these the same if stratified is True
-LR: 0.001
+LR: 0.0015
 BATCH_SIZE: 64
 EPOCHS: 15

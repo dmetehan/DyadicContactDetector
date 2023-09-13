@@ -1,7 +1,7 @@
 # Model extensions
 *.pth
 
-# early experiments folder
+# early Flickr folder
 /runs
 
 # Byte-compiled / optimized / DLL files

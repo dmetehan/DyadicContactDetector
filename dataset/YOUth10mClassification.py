@@ -14,7 +14,6 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 from utils import Aug, Options, parse_config
 
-# Splits are generated using dataset/YOUth_split_train_val_test.py
 SET_SPLITS = {'train': ['B48446', 'B56392', 'B00738', 'B00501', 'B43691', 'B64172', 'B44801', 'B75514', 'B58671', 'B75027', 'B55777', 'B48098', 'B42568', 'B78799', 'B33892', 'B51920', 'B37295', 'B40508', 'B00230', 'B51311', 'B00157', 'B00432', 'B35191', 'B82756', 'B64612', 'B36241', 'B61501', 'B51848', 'B35574', 'B00071', 'B80924', 'B49702', 'B80116', 'B60004', 'B75777', 'B59400', 'B83286', 'B71467', 'B72088', 'B33718', 'B40295', 'B41974', 'B77168', 'B81926', 'B47859', 'B41645', 'B69982', 'B39657', 'B61791', 'B35985'],
               'val': ['B45742', 'B73095', 'B00267', 'B74193', 'B45111', 'B54074', 'B00402', 'B48908', 'B38777', 'B64396', 'B70930', 'B60483', 'B67411', 'B36445', 'B54732', 'B70410', 'B78220', 'B60741', 'B68344', 'B00018'],
               'test': ['B44040', 'B66340', 'B62722', 'B45358', 'B46724', 'B72504', 'B49249', 'B83755', 'B50284', 'B77974', 'B63936', 'B34489', 'B62594', 'B56066', 'B00836', 'B49427', 'B71725', 'B53434', 'B46237', 'B41317']}
@@ -116,69 +115,6 @@ class YOUth10mClassification(Dataset):
         # noinspection PyTypeChecker
         rgb = np.transpose(np.array(crop.resize(self.resize), dtype=np.float32) / 255, (2, 0, 1))
         return rgb, label
-
-    def get_gaussians(self, idx, rgb=False, target_size=(224, 224), augment=()):
-        label = self.img_labels_dets.loc[idx, "contact_type"]
-        label = min(label, 1)
-        gauss_hmap_path = f'{os.path.join(self.gauss_hmaps_dir, os.path.basename(self.img_labels_dets.loc[idx, "crop_path"]))}.npy'
-        img = Image.open(self.img_labels_dets.loc[idx, "crop_path"])
-        if os.path.exists(gauss_hmap_path):
-            gauss_hmap = np.load(gauss_hmap_path)
-            if len(gauss_hmap) == 0:
-                return np.zeros((34 if not rgb else 37, target_size[0], target_size[1]), dtype=np.float32), label
-            if gauss_hmap.shape[1:] != target_size:
-                # raise NotImplementedError("resizing gauss_hmap (34, 224, 224) not implemented!")
-                heatmaps = np.zeros((34, target_size[0], target_size[1]), dtype=np.float32)
-                for p in range(len(self.img_labels_dets.loc[idx, 'bbxes'])):
-                    for k in range(17):
-                        heatmaps[p*17+k, :, :] = transforms.Resize((target_size[0], target_size[1]))(Image.fromarray(gauss_hmap[p*17+k, :, :]))
-                gauss_hmap = heatmaps
-            if self.need_swap.loc[idx, 0]:
-                gauss_hmap = np.vstack((gauss_hmap[17:, :, :], gauss_hmap[:17, :, :]))
-            if rgb:
-                # noinspection PyTypeChecker
-                gauss_hmap_rgb = np.concatenate((gauss_hmap,
-                                                 np.transpose(np.array(img.resize(target_size)), (2, 0, 1))), axis=0)
-                return gauss_hmap_rgb, label
-            else:
-                return gauss_hmap, label
-        if not self.recalc_joint_hmaps:
-            return np.zeros((34 if not rgb else 37, target_size[0], target_size[1]), dtype=np.float32), label
-
-        raise NotImplementedError('this method should be updated to match the get_heatmaps method')
-        width, height = img.size
-        x = np.linspace(0, width - 1, width)
-        y = np.linspace(0, height - 1, height)
-        xx, yy = np.meshgrid(x, y)
-        xxyy = np.c_[xx.ravel(), yy.ravel()]
-        heatmaps = np.zeros((34, 224, 224), dtype=np.float32)
-        if len(self.pose_dets[idx]['preds']) == 0:
-            return heatmaps, label
-        for p in range(len(self.pose_dets[idx]['preds'])):
-            for i in range(len(self.pose_dets[idx]['preds'][p])):
-                m = self.pose_dets[idx]['preds'][p][i][:2]
-                s = 10 * np.eye(2)
-                k = multivariate_normal(mean=m, cov=s)
-                zz = k.pdf(xxyy)
-                # reshape and plot image
-                img = Image.fromarray(zz.reshape((height, width)))
-                # noinspection PyTypeChecker
-                img = np.array(img.resize((224, 224)))
-                heatmaps[17 * p + i, :, :] = img
-
-        np.save(gauss_hmap_path, heatmaps)
-        # noinspection PyArgumentList
-        # heatmap = (heatmaps.max(axis=0)*2550).astype(np.uint8)
-        # heatmap_img = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-        # print(np.max(heatmap_img), np.min(heatmap_img))
-        # img = cv2.resize(cv2.imread(self.img_labels_dets.loc[idx, "crop_path"]), (224, 224))
-        # print(heatmap_img.shape, img.shape)
-        # super_imposed_img = cv2.addWeighted(heatmap_img, 0.5, img, 0.5, 0)
-        # cv2.imshow('frame', super_imposed_img)
-        # cv2.waitKey()
-        # plt.imshow(super_imposed_img)
-        # plt.show()
-        return heatmaps, label
 
     @staticmethod
     def bbox_xyxy2cs(x1, y1, x2, y2, aspect_ratio, padding=1.):
@@ -396,8 +332,6 @@ class YOUth10mClassification(Dataset):
             label = self.img_labels_dets.loc[idx, "contact_type"]
         elif self.option == Options.rgb:
             data, label = self.get_rgb(idx)
-        elif self.option == Options.gaussian:
-            data, label = self.get_gaussians(idx)
         elif self.option == Options.jointmaps:
             data, label = self.get_joint_hmaps(idx)
         elif self.option == Options.bodyparts:
@@ -406,14 +340,8 @@ class YOUth10mClassification(Dataset):
         elif self.option == Options.depth:
             label = min(self.img_labels_dets.loc[idx, "contact_type"], 1)
             data = self.get_depthmaps(idx)
-        elif self.option == Options.gaussian_rgb:
-            data, label = self.get_gaussians(idx, rgb=True)
         elif self.option == Options.jointmaps_rgb:
             data, label = self.get_joint_hmaps(idx, rgb=True)
-        elif self.option == Options.gaussian_rgb_bodyparts:
-            data, label = self.get_gaussians(idx, rgb=True)
-            bodyparts = self.get_bodyparts(idx)
-            data = np.vstack((data, bodyparts))
         elif self.option == Options.jointmaps_rgb_bodyparts:
             data, label = self.get_joint_hmaps(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
@@ -441,22 +369,20 @@ class YOUth10mClassification(Dataset):
         for aug in augment:
             if aug == Aug.swap:
                 print("WARNING! Swapping is not recommended when bounding box heuristic is used to correct the order")
-                if self.option in [Options.gaussian_rgb, Options.jointmaps_rgb, Options.jointmaps, Options.gaussian,
-                                   Options.jointmaps_rgb_bodyparts, Options.gaussian_rgb_bodyparts,
+                if self.option in [Options.jointmaps_rgb, Options.jointmaps, Options.jointmaps_rgb_bodyparts,
                                    Options.jointmaps_bodyparts, Options.jointmaps_bodyparts_depth]:
                     if np.random.randint(2) == 0:  # 50% chance to swap
                         data[:17, :, :], data[17:34, :, :] = data[17:34, :, :], data[:17, :, :]
             elif aug == Aug.hflip:
                 if np.random.randint(2) == 0:  # 50% chance to flip
                     # swap channels of left/right pairs of pose channels
-                    if self.option in [Options.gaussian_rgb, Options.jointmaps_rgb, Options.jointmaps, Options.gaussian,
-                                       Options.jointmaps_rgb_bodyparts, Options.gaussian_rgb_bodyparts,
+                    if self.option in [Options.jointmaps_rgb, Options.jointmaps, Options.jointmaps_rgb_bodyparts,
                                        Options.jointmaps_bodyparts, Options.jointmaps_bodyparts_depth]:
                         for i, j in self.flip_pairs_pose:
                             data[i, :, :], data[j, :, :] = data[j, :, :], data[i, :, :]
                             data[i+17, :, :], data[j+17, :, :] = data[j+17, :, :], data[i+17, :, :]
                     # swap channels of left/right pairs of body-part channels
-                    if self.option in [Options.gaussian_rgb_bodyparts, Options.jointmaps_rgb_bodyparts]:
+                    if self.option in [Options.jointmaps_rgb_bodyparts]:
                         for i, j in self.flip_pairs_bodyparts:
                             data[i+37, :, :], data[j+37, :, :] = data[j+37, :, :], data[i+37, :, :]
                     elif self.option in [Options.rgb_bodyparts]:
@@ -473,16 +399,9 @@ class YOUth10mClassification(Dataset):
                 i = torch.randint(0, self.resize[0] - self.target_size[0] + 1, size=(1,)).item()
                 j = torch.randint(0, self.resize[1] - self.target_size[1] + 1, size=(1,)).item()
                 data = data[:, i:i+self.target_size[0], j:j+self.target_size[1]]
-            # elif aug == Aug.rotate:
-            # TODO: Implement random rotation
             elif aug == Aug.color:
                 # random color-based augmentations to the rgb channels
-                if self.option in [Options.gaussian_rgb, Options.gaussian_rgb_bodyparts,
-                                   Options.jointmaps_rgb, Options.jointmaps_rgb_bodyparts]:
-                    # rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :], (1, 2, 0)).astype(np.uint8))
-                    # plt.imshow(rgb)
-                    # plt.show()
-                    # print(data[34:37, :, :].mean())
+                if self.option in [Options.jointmaps_rgb, Options.jointmaps_rgb_bodyparts]:
                     data[34:37, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[34:37, :, :],
                                                                                                  (1, 2, 0)).astype(np.uint8))),
                                                      (2, 0, 1)).astype(np.float32) / 255

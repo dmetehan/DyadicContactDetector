@@ -212,7 +212,6 @@ def main():
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(train_dir, test_dir, cfg)
     best_model_path = train_model(model, optimizer, scheduler, loss_fn, experiment_name, cfg, train_loader, validation_loader,
                                   exp_dir=exp_dir, start_epoch=start_epoch, resume=args.resume)
-    # TODO: Write best model's name/path to a file after the training is completed.
     if args.test:
         from test import test_model
         model.load_state_dict(torch.load(best_model_path))

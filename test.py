@@ -28,6 +28,7 @@ test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassifica
 # test_dir = '/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/test'
 classes = ("no touch", "touch")
 
+
 def test_model(model, model_name, experiment_name, exp_dir, data_loader, test_set, device):
     model.eval()
     model = model.to(device)

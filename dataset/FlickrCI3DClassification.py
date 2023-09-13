@@ -74,64 +74,6 @@ class FlickrCI3DClassification(Dataset):
     def __len__(self):
         return len(self.img_labels)
 
-    def get_gaussians(self, idx, rgb=False):
-        label = self.img_labels.loc[idx, "contact_type"]
-        gauss_hmap_path = f'{os.path.join(self.gauss_hmaps_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}.npy'
-        crop = Image.open(f'{os.path.join(self.crops_dir, os.path.basename(self.img_labels.loc[idx, "crop_path"]))}')
-        if os.path.exists(gauss_hmap_path):
-            gauss_hmap = np.load(gauss_hmap_path)
-            if gauss_hmap.shape[1:] != self.resize:
-                # raise NotImplementedError("resizing gauss_hmap (34, 224, 224) not implemented!")
-                heatmaps = np.zeros((34, self.resize[0], self.resize[1]), dtype=np.float32)
-                for p in range(len(self.pose_dets[idx]['bbxes'])):
-                    for k in range(17):
-                        heatmaps[p*17+k, :, :] = transforms.Resize((self.resize[0], self.resize[1]))(Image.fromarray(gauss_hmap[p * 17 + k, :, :]))
-                gauss_hmap = (heatmaps - np.min(heatmaps)) / (np.max(heatmaps) - np.min(heatmaps))
-            else:
-                gauss_hmap = (gauss_hmap - np.min(gauss_hmap)) / (np.max(gauss_hmap) - np.min(gauss_hmap))
-            if rgb:
-                # noinspection PyTypeChecker
-                gauss_hmap_rgb = np.concatenate((gauss_hmap,
-                                                 np.transpose(np.array(crop.resize(self.resize), dtype=np.float32) / 255, (2, 0, 1))), axis=0)
-                return gauss_hmap_rgb, label
-            else:
-                return gauss_hmap, label
-        if not self.recalc:
-            return np.zeros((34 if not rgb else 37, self.resize[0], self.resize[1]), dtype=np.float32), label
-        width, height = crop.size
-        x = np.linspace(0, width - 1, width)
-        y = np.linspace(0, height - 1, height)
-        xx, yy = np.meshgrid(x, y)
-        xxyy = np.c_[xx.ravel(), yy.ravel()]
-        heatmaps = np.zeros((34, 224, 224), dtype=np.float32)
-        if len(self.pose_dets[idx]['preds']) == 0:
-            return heatmaps, label
-        for p in range(len(self.pose_dets[idx]['preds'])):
-            for i in range(len(self.pose_dets[idx]['preds'][p])):
-                m = self.pose_dets[idx]['preds'][p][i][:2]
-                s = 10 * np.eye(2)
-                k = multivariate_normal(mean=m, cov=s)
-                zz = k.pdf(xxyy)
-                # reshape and plot image
-                img = Image.fromarray(zz.reshape((height, width)))
-                # noinspection PyTypeChecker
-                img = np.array(img.resize((224, 224)))
-                heatmaps[17 * p + i, :, :] = img
-
-        np.save(gauss_hmap_path, heatmaps)
-        # noinspection PyArgumentList
-        # heatmap = (heatmaps.max(axis=0)*2550).astype(np.uint8)
-        # heatmap_img = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-        # print(np.max(heatmap_img), np.min(heatmap_img))
-        # img = cv2.resize(cv2.imread(self.img_labels.loc[idx, "crop_path"]), (224, 224))
-        # print(heatmap_img.shape, img.shape)
-        # super_imposed_img = cv2.addWeighted(heatmap_img, 0.5, img, 0.5, 0)
-        # cv2.imshow('frame', super_imposed_img)
-        # cv2.waitKey()
-        # plt.imshow(super_imposed_img)
-        # plt.show()
-        return heatmaps, label
-
     @staticmethod
     def bbox_xyxy2cs(x1, y1, x2, y2, aspect_ratio, padding=1.):
         """ Converts xyxy bounding box format to center and scale with the added padding.
@@ -321,18 +263,10 @@ class FlickrCI3DClassification(Dataset):
                 self.debug_printed = True
             data = np.zeros((52, self.resize[0], self.resize[1]), dtype=np.float32)
             label = self.img_labels.loc[idx, "contact_type"]
-        elif self.option == Options.gaussian:
-            data, label = self.get_gaussians(idx)
         elif self.option == Options.jointmaps:
             data, label = self.get_heatmaps(idx)
-        elif self.option == Options.gaussian_rgb:
-            data, label = self.get_gaussians(idx, rgb=True)
         elif self.option == Options.jointmaps_rgb:
             data, label = self.get_heatmaps(idx, rgb=True)
-        elif self.option == Options.gaussian_rgb_bodyparts:
-            data, label = self.get_gaussians(idx, rgb=True)
-            bodyparts = self.get_bodyparts(idx)
-            data = np.vstack((data, bodyparts))
         elif self.option == Options.jointmaps_rgb_bodyparts:
             data, label = self.get_heatmaps(idx, rgb=True)
             bodyparts = self.get_bodyparts(idx)
@@ -359,7 +293,7 @@ class FlickrCI3DClassification(Dataset):
                         data[i, :, :], data[j, :, :] = data[j, :, :], data[i, :, :]
                         data[i+17, :, :], data[j+17, :, :] = data[j+17, :, :], data[i+17, :, :]
                     # swap channels of left/right pairs of body-part channels
-                    if self.option in [Options.gaussian_rgb_bodyparts, Options.jointmaps_rgb_bodyparts]:
+                    if self.option in [Options.jointmaps_rgb_bodyparts]:
                         for i, j in self.flip_pairs_bodyparts:
                             data[i+37, :, :], data[j+37, :, :] = data[j+37, :, :], data[i+37, :, :]
                     data[:, :, :] = data[:, :, ::-1]  # flip everything horizontally
@@ -367,22 +301,12 @@ class FlickrCI3DClassification(Dataset):
                 i = torch.randint(0, self.resize[0] - self.target_size[0] + 1, size=(1,)).item()
                 j = torch.randint(0, self.resize[1] - self.target_size[1] + 1, size=(1,)).item()
                 data = data[:, i:i+self.target_size[0], j:j+self.target_size[1]]
-            # elif aug == Aug.rotate:
-            # TODO: Implement random rotation
             elif aug == Aug.color:
                 # random color-based augmentations to the rgb channels
-                if self.option in [Options.gaussian_rgb, Options.gaussian_rgb_bodyparts,
-                                   Options.jointmaps_rgb, Options.jointmaps_rgb_bodyparts]:
-                    # rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :], (1, 2, 0)).astype(np.uint8))
-                    # plt.imshow(rgb)
-                    # plt.show()
-                    # print(data[34:37, :, :].mean())
+                if self.option in [Options.jointmaps_rgb, Options.jointmaps_rgb_bodyparts]:
                     data[34:37, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[34:37, :, :],
                                                                                                  (1, 2, 0)).astype(np.uint8))),
                                                      (2, 0, 1)).astype(np.float32) / 255
-                    # rgb = Image.fromarray(np.transpose(255 * data[34:37, :, :], (1, 2, 0)).astype(np.uint8))
-                    # plt.imshow(rgb)
-                    # plt.show()
 
 
 def init_datasets_with_cfg(train_dir, test_dir, cfg):
@@ -588,7 +512,7 @@ def test_get_bodyparts():
 
 
 def test_get_heatmaps():
-    option = Options.gaussian
+    option = Options.jointmaps
     train_dir = '/home/sac/GithubRepos/ContactClassification-ssd/FlickrCI3DClassification/train'
     train_dataset = FlickrCI3DClassification(train_dir, option=option, recalc_hmaps=True)
     train_dataset.set_train_inds(list(range(len(train_dataset))))

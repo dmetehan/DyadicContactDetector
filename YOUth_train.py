@@ -93,7 +93,6 @@ def train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, v
         best_vacc_blncd = 0.0
     writer = SummaryWriter('{}/{}_{}'.format(exp_dir, experiment_name, timestamp))
 
-
     model = model.to(device)
     for epoch in range(start_epoch, cfg.EPOCHS):
         print('EPOCH {}:'.format(epoch + 1))
@@ -204,7 +203,6 @@ def main():
     train_loader, validation_loader, test_loader = init_datasets_with_cfg(root_dir_ssd, root_dir_ssd, cfg)
     best_model_path = train_model(model, optimizer, loss_fn, experiment_name, cfg, train_loader, validation_loader,
                                   exp_dir=exp_dir, start_epoch=start_epoch, resume=args.resume)
-    # TODO: Write best model's name/path to a file after the training is completed.
     if args.test:
         from YOUth_test import test_model
         model.load_state_dict(torch.load(best_model_path))

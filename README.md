@@ -2,7 +2,7 @@
 ## Metehan Doyran, Ronald Poppe, Albert Ali Salah
 
 ## Dataset:
-* (YOUth Parent-Child Interaction Dataset)[https://www.uu.nl/en/research/youth-cohort-study/request-youth-data]
+* [YOUth Parent-Child Interaction Dataset](https://www.uu.nl/en/research/youth-cohort-study/request-youth-data)
 
 ## Requirements:
 * mmpose (git submodule update --init --recursive --remote)

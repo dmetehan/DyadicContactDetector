@@ -1,4 +1,8 @@
-# ContactClassification
+![image](https://github.com/dmetehan/DyadicContactDetector/assets/53035260/283d286b-9624-4c76-84a9-87ef23681a82)# Embracing Contact: Detecting Parent-Infant Interactions
+## Metehan Doyran, Ronald Poppe, Albert Ali Salah
+
+## Dataset:
+* [https://www.uu.nl/en/research/youth-cohort-study/request-youth-data](YOUth Parent-Child Interaction Dataset)
 
 ## Requirements:
 * mmpose (git submodule update --init --recursive --remote)

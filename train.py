@@ -10,6 +10,7 @@ from sklearn.metrics import balanced_accuracy_score, accuracy_score, f1_score
 
 from argparse import ArgumentParser
 from ContactClassifier import ContactClassifier, initialize_model
+from models import initialize_gcn_model
 from utils import parse_config, get_experiment_name, find_last_values_tensorboard
 
 # this is important for FLickrCI3DClassification. It doesn't allow importint v2 after initializing the network.
@@ -56,7 +57,6 @@ def train_one_epoch(model, optimizer, loss_fn, train_loader, epoch_index, tb_wri
         labels = nn.functional.one_hot(labels, num_classes=2).to(device)
         # Zero your gradients for every batch!
         optimizer.zero_grad()
-
         # Make predictions for this batch
         outputs = model(inputs)
         all_preds[i, :len(labels)] = torch.argmax(outputs.detach().cpu(), dim=1)
@@ -110,7 +110,6 @@ def train_model(model, optimizer, scheduler, loss_fn_train, experiment_name, cfg
         best_vloss = 1_000_000.
         best_vacc_blncd = 0.0
     writer = SummaryWriter('{}/{}_{}'.format(exp_dir, experiment_name, timestamp))
-
 
     model = model.to(device)
     for epoch in range(start_epoch, cfg.EPOCHS):
@@ -201,8 +200,9 @@ def main():
     data_dir = args.dataset_dir
     train_dir, test_dir = os.path.join(data_dir, "train"), os.path.join(data_dir, "test")
 
-    model, optimizer, loss_fn = initialize_model(cfg, device)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.5)
+    # model, optimizer, loss_fn = initialize_model(cfg, device)
+    model, optimizer, loss_fn = initialize_gcn_model(cfg, device)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5, verbose=True)
     experiment_name = get_experiment_name(cfg)
     start_epoch = 0
     if args.resume:

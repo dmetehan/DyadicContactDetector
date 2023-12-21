@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 from torch import nn, optim
-
-from utils import Options
+from models import GraphCNN
+from utils import Options, get_adj_mat
 
 
 class ContactClassifier(nn.Module):
     def __init__(self, backbone="resnet50", weights="IMAGENET1K_V2", option=Options.debug, copy_rgb_weights=False,
-                 finetune=False):
+                 finetune=False, signatures=False):
         super(ContactClassifier, self).__init__()
         resnet50 = torch.hub.load("pytorch/vision", backbone, weights=weights)
         conv1_pretrained = list(resnet50.children())[0]
@@ -48,7 +48,7 @@ class ContactClassifier(nn.Module):
                     param.requires_grad = False
         # print(list(resnet50.named_parameters()))
         self.feat_extractor = resnet50
-        self.fc = nn.Linear(in_features=2048, out_features=2, bias=True)
+        self.fc = nn.Linear(in_features=2048, out_features=2 if not signatures else 42, bias=True)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -60,16 +60,22 @@ class ContactClassifier(nn.Module):
         return x
 
 
-def initialize_model(cfg, device, finetune=False):
+def initialize_model(cfg, device, finetune=False, signatures=False):
     model = ContactClassifier(backbone="resnet50", weights="IMAGENET1K_V2" if cfg.PRETRAINED else None,
                               option=cfg.OPTION,
-                              copy_rgb_weights=cfg.COPY_RGB_WEIGHTS, finetune=finetune)
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(cfg.LOSS_WEIGHTS).to(device))
+                              copy_rgb_weights=cfg.COPY_RGB_WEIGHTS, finetune=finetune, signatures=signatures)
+    if signatures:
+        loss_fn = nn.BCEWithLogitsLoss()
+    else:
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor(cfg.LOSS_WEIGHTS).to(device))
     optimizer = optim.AdamW(model.parameters(), lr=cfg.LR, weight_decay=1e-4)
     return model, optimizer, loss_fn
 
 
 def init_model(option=Options.jointmaps):
+    """
+    deprecated
+    """
     model = ContactClassifier(backbone="resnet50", weights="IMAGENET1K_V2", option=option)
     return model
 

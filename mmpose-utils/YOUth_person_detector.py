@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 import pandas as pd
 import numpy as np
 import sys
-sys.path.extend(["/mnt/hdd1/GithubRepos/ContactClassification"])
+sys.path.extend(["/mnt/hdd1/GithubRepos/DyadicContactDetector"])
 from prep_crops import crop
 from mmcv import Config, dump, load
 from mmpose.apis import (inference_top_down_pose_model, init_pose_model,
@@ -28,6 +28,7 @@ except ImportError:
     has_mmdet = False
 
 counter = 0
+
 
 def run_mmpose(img_dir, out_dir, labels_file, det_model, pose_model, args, outputs):
     global counter
@@ -108,7 +109,7 @@ def run_mmpose(img_dir, out_dir, labels_file, det_model, pose_model, args, outpu
             continue
 
         img = Image.open(img_path)
-        img_crop = crop(img, bbxes, [0, 1])
+        img_crop, _ = crop(img, bbxes, [0, 1])
         os.makedirs(os.path.dirname(crop_file), exist_ok=True)
         img_crop.save(crop_file)
 
@@ -174,6 +175,7 @@ def run_mmpose(img_dir, out_dir, labels_file, det_model, pose_model, args, outpu
             raise ValueError(f"returned_outputs has more than 1 element for {image_name}")
 
     return outputs
+
 
 def main():
     """Helper code for detecting people in YOUth pci_frames"""
@@ -267,6 +269,7 @@ def main():
             outputs = run_mmpose(img_dir, args.out_dir, annotation_file, det_model, pose_model, args, outputs)
     print(f'\nwriting results to {out_path}')
     outputs.to_json(out_path)
+
 
 if __name__ == '__main__':
     main()

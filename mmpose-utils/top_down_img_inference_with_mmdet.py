@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import json
 import os
 import csv
 import warnings
@@ -38,6 +39,16 @@ def main():
     parser.add_argument('--annotation-file', type=str, default='', help='csv annotation file')
     parser.add_argument('--img', type=str, default='', help='Image file')
     parser.add_argument(
+        '--use_mmdet',
+        action='store_true',
+        default=False,
+        help='whether to use the YOLOx bounding box detection. Uses ground-truth bounding boxes if False.')
+    parser.add_argument(
+        '--signatures',
+        action='store_true',
+        default=False,
+        help='whether to use signature dataset or classification')
+    parser.add_argument(
         '--show',
         action='store_true',
         default=False,
@@ -67,7 +78,7 @@ def main():
         default=1,
         help='Link thickness for visualization')
 
-    assert has_mmdet, 'Please install mmdet to run the demo.'
+    assert has_mmdet, 'Please install mmdet to run the code.'
 
     args = parser.parse_args()
 
@@ -94,24 +105,31 @@ def main():
     if args.set_dir != '':
         out_img_dir = os.path.join(args.set_dir, 'pose_detections')
         heatmaps_dir = os.path.join(args.set_dir, 'heatmaps')
-        labels_file = os.path.join(args.set_dir, 'crop_contact_classes.csv')
+        labels_file = os.path.join(args.set_dir, f'crop_contact_'
+                                                 f'{"classes" if not args.signatures else "signatures"}.csv')
+        bbox_file = os.path.join(args.set_dir, f'interaction_contact_'
+                                               f'{"classification" if not args.signatures else "signature"}.json')
         subject = "BUG"
         camera = "BUG"
     else:
         out_img_dir = os.path.join(args.out_dir, 'pose_detections')
         heatmaps_dir = os.path.join(args.out_dir, 'heatmaps')
         labels_file = args.annotation_file
+        bbox_file = os.path.join(os.path.dirname(labels_file), f'interaction_contact_'
+                                               f'{"classification" if not args.signatures else "signature"}.json')
         subject = os.path.basename(labels_file).split('.')[0]
         camera = labels_file.split('/')[-2]
         out_img_dir = os.path.join(out_img_dir, camera)
         heatmaps_dir = os.path.join(heatmaps_dir, camera)
     labels_reader = csv.reader(open(labels_file))
+    with open(bbox_file, 'r') as f:
+        bboxes_gt = json.load(f)
     outputs = []
-    for crop_path, contact_type in labels_reader:
+    for crop_path, contact_type, offset in labels_reader:
         if crop_path == 'crop_path':
             continue  # skip header
         image_name = os.path.basename(crop_path)
-        if not(image_name.endswith(".jpeg") or image_name.endswith(".jpg") or image_name.endswith(".png")):
+        if not (image_name.endswith(".jpeg") or image_name.endswith(".jpg") or image_name.endswith(".png")):
             continue
         # if image_name not in ["girls_113749_00.png", "girls_113749_01.png", "girls_127333_00.png"]:
         #     continue
@@ -133,13 +151,23 @@ def main():
 
         if args.set_dir == '':
             crop_path = os.path.join(args.img_dir, crop_path)
-        # test a single image, the resulting box is (x1, y1, x2, y2)
-        mmdet_results = inference_detector(det_model, crop_path)
 
-        # keep the person class bounding boxes.
-        person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
-        # test a single image, with a list of bboxes.
+        if args.use_mmdet:
+            # test a single image, the resulting box is (x1, y1, x2, y2)
+            mmdet_results = inference_detector(det_model, crop_path)
 
+            # the person_results variable! (using gt instead of detection)
+            # keep the person class bounding boxes.
+            person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
+        else:
+            # Read bounding boxes from the "interaction_contact_classification.json", subtract offset to replace
+            pair_index = int(os.path.basename(crop_path).split('_')[-1].split('.')[0])
+            video_name = '_'.join(os.path.basename(crop_path).split('_')[:-1])
+            p_ids = bboxes_gt[video_name]['ci_classif' if not args.signatures else 'ci_sign'][pair_index]['person_ids']
+            offset_x, offset_y = list(map(float, offset[1:-1].split(', ')))
+            offset_arr = np.array([offset_x, offset_y, offset_x, offset_y])
+            person_results = [{'bbox': np.append(np.array(bboxes_gt[video_name]['bbxes'][i] - offset_arr,
+                                                          dtype=np.float32), 1.0)} for i in p_ids]
         # e.g. use ('backbone', ) to return backbone feature
         output_layer_names = None
 
@@ -157,8 +185,11 @@ def main():
         pose_mean_scores = []  # this is created to keep the best 2 pose detections.
         for r, result in enumerate(pose_results):
             pose_mean_scores.append(result['keypoints'][:, 2].mean())
-        ind_to_keep = np.argsort(pose_mean_scores)[::-1][:2]
-        pose_output = {'preds': [], 'bbxes': [], 'crop_path': crop_path, 'contact_type': contact_type}
+        assert len(pose_mean_scores) == 2, f"{len(pose_mean_scores)} detections, instead of 2"
+        # TODO: THIS ARGSORT MESSES UP WITH THE ORDER OF THE REG_IDS
+        ind_to_keep = [0, 1]  # np.argsort(pose_mean_scores)[::-1][:2]
+        pose_output = {'preds': [], 'bbxes': [], 'crop_path': crop_path,
+                       'contact_type' if args.signatures else 'reg_ids': contact_type}
         for r in ind_to_keep:
             result = pose_results[r]
             pose_output['preds'].append(result['keypoints'])

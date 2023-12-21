@@ -362,7 +362,7 @@ class YOUth10mClassification(Dataset):
         else:
             raise NotImplementedError()
 
-        self.do_augmentations(data, augment)
+        data = self.do_augmentations(data, augment)
         return idx, data, label
 
     def do_augmentations(self, data, augment):
@@ -409,6 +409,7 @@ class YOUth10mClassification(Dataset):
                     data[:3, :, :] = np.transpose(self.color_aug(Image.fromarray(np.transpose(255 * data[:3, :, :],
                                                                                               (1, 2, 0)).astype(np.uint8))),
                                                   (2, 0, 1)).astype(np.float32) / 255
+        return data
 
 
 def init_datasets_with_cfg(root_dir, _, cfg):

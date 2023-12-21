@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 import pandas as pd
 import numpy as np
 import sys
-sys.path.extend(["/mnt/hdd1/GithubRepos/ContactClassification"])
+sys.path.extend(["/mnt/hdd1/GithubRepos/DyadicContactDetector"])
 from prep_crops import crop
 from mmcv import Config, dump, load
 from mmpose.apis import (inference_top_down_pose_model, init_pose_model,
@@ -28,6 +28,7 @@ except ImportError:
     has_mmdet = False
 
 counter = 0
+
 
 def run_mmpose(img_dir, out_dir, det_model, pose_model, args, outputs):
     global counter
@@ -99,7 +100,7 @@ def run_mmpose(img_dir, out_dir, det_model, pose_model, args, outputs):
             continue
 
         img = Image.open(img_path)
-        img_crop = crop(img, bbxes, [0, 1])
+        img_crop = img if args.nocrop else crop(img, bbxes, [0, 1])[0]
         os.makedirs(os.path.dirname(crop_file), exist_ok=True)
         img_crop.save(crop_file)
 
@@ -160,9 +161,9 @@ def run_mmpose(img_dir, out_dir, det_model, pose_model, args, outputs):
             np.save(heatmap_out_file, heatmaps)
         elif len(returned_outputs) == 0:
             np.save(heatmap_out_file, np.array([]))
-            print(f"returned_outputs has NO element for {image_name}")
+            print(f"returned_outputs has NO element for {img_name}")
         else:
-            raise ValueError(f"returned_outputs has more than 1 element for {image_name}")
+            raise ValueError(f"returned_outputs has more than 1 element for {img_name}")
 
     return outputs
 
@@ -176,6 +177,11 @@ def main():
     parser.add_argument('--img-dir', type=str, default='', help='directory of frames')
     parser.add_argument('--out-dir', type=str, default='', help='directory of output')
     parser.add_argument('--img', type=str, default='', help='Image file')
+    parser.add_argument(
+        '--nocrop',
+        action='store_true',
+        default=False,
+        help='whether to show img')
     parser.add_argument(
         '--show',
         action='store_true',
@@ -214,14 +220,14 @@ def main():
     assert args.det_checkpoint is not None
 
     '''
-    ~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/YOUth_person_detector.py \
+    ~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/DyadicContactDetector/mmpose-utils/PublicYOUth_person_detector.py \
     mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py \
     mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
     mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py \
     mmpose-utils/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth \
-    --img-dir "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all" \
-    --annotation-dir "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/contact" \
-    --camera "cam1"
+    --img-dir "/mnt/hdd1/Datasets/YOUthPublic/frames/cam1" \
+    --out-dir "/mnt/hdd1/Datasets/YOUthPublic/2dpose/cam1" \
+    --nocrop"
     '''
 
     det_model = init_detector(
@@ -239,6 +245,7 @@ def main():
     outputs = run_mmpose(args.img_dir, args.out_dir, det_model, pose_model, args, outputs)
     print(f'\nwriting results to {out_path}')
     outputs.to_json(out_path)
+
 
 if __name__ == '__main__':
     main()

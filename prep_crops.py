@@ -35,10 +35,12 @@ def crop(img, bbxes, person_ids):
     # actual cropping
     x1, y1, x2, y2 = max(0, int(round(x1)) - dx_left), max(0, int(round(y1)) - dy_top), min(width, int(round(
         x2)) + dx_right), min(height, int(round(y2)) + dy_bottom)
+
+
     try:
-        return img[y1:y2, x1:x2]
+        return img[y1:y2, x1:x2], (x1, y1)
     except TypeError:
-        return img.crop((x1, y1, x2, y2))
+        return img.crop((x1, y1, x2, y2)), (x1, y1)
 
 
 def prep(set_dir):
@@ -57,18 +59,38 @@ def prep(set_dir):
         count = 0
         for ci in ann_data[img_name]['ci_classif']:
             contact_type = ci['contact_type']
-            crop_img = crop(img, bbxes, ci['person_ids'])
+            crop_img, offset = crop(img, bbxes, ci['person_ids'])
             crop_path = os.path.join(crop_dir, f'{img_name}_{count:02d}.png')
-            cv2.imwrite(crop_path, crop_img)
-            labels.append([crop_path, contact_type])
+            # vis_bbox(crop_img, img, bbxes[ci['person_ids'][0]], bbxes[ci['person_ids'][1]], offset)
+            # cv2.imwrite(crop_path, crop_img)
+            labels.append([crop_path, contact_type, offset])
             count += 1
             assert count < 100, f"count ({count}) became 3 digits!"
-    pd.DataFrame(labels, columns=['crop_path', 'contact_type']).to_csv(labels_file, index=False)
+    pd.DataFrame(labels, columns=['crop_path', 'contact_type', 'offset']).to_csv(labels_file, index=False)
+
+
+def vis_bbox(crop_img, img, bbxes1, bbxes2, offset):
+    copy_img = img.copy()
+    copy_crop = crop_img.copy()
+    s1, e1 = ((int(round(bbxes1[0] - offset[0])), int(round(bbxes1[1] - offset[1]))),
+              (int(round(bbxes1[2] - offset[0])), int(round(bbxes1[3] - offset[1]))))
+    s2, e2 = ((int(round(bbxes2[0] - offset[0])), int(round(bbxes2[1] - offset[1]))),
+              (int(round(bbxes2[2] - offset[0])), int(round(bbxes2[3] - offset[1]))))
+    cv2.rectangle(copy_crop, s1, e1, (255, 0, 0))
+    cv2.rectangle(copy_crop, s2, e2, (0, 255, 0))
+    cv2.imshow("crop", copy_crop)
+    cv2.rectangle(copy_img, (int(round(bbxes1[0])), int(round(bbxes1[1]))),
+                  (int(round(bbxes1[2])), int(round(bbxes1[3]))), (255, 0, 0))
+    cv2.rectangle(copy_img, (int(round(bbxes2[0])), int(round(bbxes2[1]))),
+                  (int(round(bbxes2[2])), int(round(bbxes2[3]))), (0, 255, 0))
+    cv2.imshow("img", copy_img)
+    cv2.waitKey(0)
 
 
 if __name__ == '__main__':
     # root_dir should include train and test folders for Flickr Classification dataset.
-    # root_dir = '/mnt/hdd1/Datasets/CI3D/Flickr Classification'
+    # root_dir = '/mnt/hdd1/Datasets/CI3D/FlickrCI3D-Classification'
     root_dir = sys.argv[1]
+    print(root_dir)
     prep(os.path.join(root_dir, 'test'))
     prep(os.path.join(root_dir, 'train'))

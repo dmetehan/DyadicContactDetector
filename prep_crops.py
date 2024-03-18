@@ -38,9 +38,9 @@ def crop(img, bbxes, person_ids):
 
 
     try:
-        return img[y1:y2, x1:x2], (x1, y1)
+        return img[y1:y2, x1:x2], (x1, y1, x2, y2)
     except TypeError:
-        return img.crop((x1, y1, x2, y2)), (x1, y1)
+        return img.crop((x1, y1, x2, y2)), (x1, y1, x2, y2)
 
 
 def prep(set_dir):

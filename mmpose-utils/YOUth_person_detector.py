@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import json
 import os
 import csv
 import warnings
@@ -55,7 +56,23 @@ def run_mmpose(img_dir, out_dir, labels_file, det_model, pose_model, args, outpu
     os.makedirs(heatmaps_dir, exist_ok=True)
     os.makedirs(crops_dir, exist_ok=True)
 
-    labels_reader = csv.reader(open(labels_file))
+    labels_reader = None
+    if labels_file.endswith('.csv'):
+        labels_reader = csv.reader(open(labels_file))
+    elif labels_file.endswith('.json'):
+        with open(labels_file, 'r') as f:
+            data = json.load(f)
+
+        def get_reader(data_dict):
+            for frame in data_dict:
+                if data_dict[frame] == 'ambiguous':
+                    continue
+                signature = []
+                for item in data_dict[frame]:
+                    signature.append([item['adult'], item['child']])
+                yield frame, signature
+        labels_reader = get_reader(data)
+
     for img_path, contact_type in labels_reader:
         if img_path == 'img_path':
             continue  # skip header
@@ -227,7 +244,7 @@ def main():
     assert args.det_checkpoint is not None
 
     '''
-    ~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/ContactClassification/mmpose-utils/YOUth_person_detector.py \
+    ~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/DyadicContactDetector/mmpose-utils/YOUth_person_detector.py \
     mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py \
     mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
     mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py \
@@ -235,6 +252,17 @@ def main():
     --set-dir "/home/sac/Encfs/YOUth/10m/pci_frames/all" \
     --out-dir "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all" \
     --annotation-dir "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/contact" \
+    --camera "cam1"
+    
+    
+    ~/anaconda3/envs/openmmlab/bin/python /mnt/hdd1/GithubRepos/DyadicContactDetector/mmpose-utils/YOUth_person_detector.py \
+    mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco.py \
+    mmpose-utils/mmdet_yolo/yolox_x_8x8_300e_coco_20211126_140254-1ef88d67.pth \
+    mmpose-utils/hrnet_w48_comb_R0_384x288_dark.py \
+    mmpose-utils/hrnet_w48_coco_384x288_dark-e881a4b6_20210203.pth \
+    --set-dir "/home/sac/Encfs/YOUth/10m/pci_frames/all" \
+    --out-dir "/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mSignatures/all" \
+    --annotation-dir "/home/sac/Encfs/YOUth/10m/pci_frames/annotations/signature" \
     --camera "cam1"
     '''
 
@@ -258,11 +286,11 @@ def main():
             if crop_path not in outputs['crop_path'].unique():
                 print(crop_path)
                 missing_frames[row['subject']].append(crop_path)
-        assert len(missing_frames) == 0, "There are missing frames in the pose_detections.csv!"
+        assert len(missing_frames) == 0, "There are missing frames in the pose_detections.json!"
     else:
         outputs = None
     for file in os.listdir(os.path.join(args.annotation_dir, args.camera)):
-        if file.endswith(".csv"):
+        if file.endswith(".csv") or file.endswith(".json"):
             subject = file.split(".")[0]
             img_dir = os.path.join(args.set_dir, subject, args.camera)
             annotation_file = os.path.join(args.annotation_dir, args.camera, file)

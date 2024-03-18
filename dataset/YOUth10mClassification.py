@@ -51,14 +51,14 @@ class YOUth10mClassification(Dataset):
         img_labels_dets = img_labels_dets[img_labels_dets['contact_type'] != 1].reset_index(drop=True)  # remove ambiguous class
         # filter only _set subjects:
         self.img_labels_dets = img_labels_dets[img_labels_dets['crop_path'].str.contains('|'.join(set_subjects))].reset_index(drop=True)
-        self.need_swap = self.check_swapping_based_on_bbox_size(self.img_labels_dets)
+        # self.need_swap = self.check_swapping_based_on_bbox_size(self.img_labels_dets)
         if train_frac is None or _set != 'train':
             self.check_labels_dets_matching(img_labels, self.img_labels_dets)
         else:
-            assert  0 < train_frac <= 1, "train_frac should be between (0, 1]"
+            assert 0 < train_frac <= 1, "train_frac should be between (0, 1]"
             print(f"Choosing {train_frac} of the training set ({len(self.img_labels_dets)})!")
             self.img_labels_dets = self.img_labels_dets.sample(frac=train_frac, random_state=42).reset_index(drop=True)
-            self.need_swap = self.need_swap.sample(frac=train_frac, random_state=42).reset_index(drop=True)
+            # self.need_swap = self.need_swap.sample(frac=train_frac, random_state=42).reset_index(drop=True)
             print(f"After selection: {len(self.img_labels_dets)} frames")
         self.transform = transform
         self.target_transform = target_transform
@@ -94,15 +94,16 @@ class YOUth10mClassification(Dataset):
 
     @staticmethod
     def check_labels_dets_matching(img_labels, img_labels_dets):
-        assert len(img_labels[img_labels.duplicated(subset=['subject', 'frame', 'contact_type'])]) == 0, \
-            "DUPLICATES FOUND IN img_labels"
+        duplicates = img_labels[img_labels.duplicated(subset=['subject', 'frame', 'contact_type'])]
+        assert len(duplicates) == 0, \
+            f"DUPLICATES FOUND IN img_labels:\n{duplicates}"
         missing_frames = defaultdict(list)
         for index, row in img_labels.iterrows():
             crop_path = f"/home/sac/GithubRepos/ContactClassification-ssd/YOUth10mClassification/all/crops/cam1/{row['subject']}/{row['frame']}"
             if crop_path not in img_labels_dets['crop_path'].unique():
                 print(crop_path)
                 missing_frames[row['subject']].append(crop_path)
-        assert len(missing_frames) == 0, "There are missing frames in the pose_detections.csv!"
+        assert len(missing_frames) == 0, f"There are missing frames in the pose_detections.json!\n{missing_frames}"
         assert len(img_labels.drop_duplicates(subset=['subject', 'frame'])) == len(img_labels_dets)
 
     def __len__(self):
@@ -186,8 +187,8 @@ class YOUth10mClassification(Dataset):
                     joint_hmaps = np.zeros((34, self.resize[0], self.resize[1]), dtype=np.float32)
             else:
                 joint_hmaps = (joint_hmaps - np.min(joint_hmaps)) / (np.max(joint_hmaps) - np.min(joint_hmaps))
-            if self.need_swap.loc[idx, 0]:
-                joint_hmaps = np.vstack((joint_hmaps[17:, :, :], joint_hmaps[:17, :, :]))
+            # if self.need_swap.loc[idx, 0]:
+            #     joint_hmaps = np.vstack((joint_hmaps[17:, :, :], joint_hmaps[:17, :, :]))
             if rgb:
                 crop = Image.open(crop_path)
                 # noinspection PyTypeChecker
@@ -477,5 +478,5 @@ def test_get_joint_hmaps():
 
 
 if __name__ == '__main__':
-    test_class()
-    # test_get_joint_hmaps()
+    # test_class()
+    test_get_joint_hmaps()
